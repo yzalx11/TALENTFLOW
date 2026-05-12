@@ -1,30 +1,34 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List
-
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from datetime import timedelta
 
-from app.models import database
+from app.core import database, security, config
 from app.schemas import user_schema
 from app.crud import crud
-from jose import JWTError, jwt
-from app.core import security
 
-# 创建一个路由
-router = APIRouter()
-oauth_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+router = APIRouter(prefix="/api/v1/auth",tags=["授权认证"])
 
-@router.post("/register", response_model=schemas.UserOut, status_code=status.HTTP_201_CREATED)
+
+@router.post("/register", response_model=user_schema.UserOut, status_code=status.HTTP_201_CREATED)
 def register(
-    user_in: schemas.UserCreate,
+    user_in: user_schema.UserCreate,
     db: Session = Depends(database.get_db)
 ):
     '''用户的注册接口'''
+    #用户名是否已存在
+    existing_user = crud.get_user_by_username(db, username=user_in.username)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该用户名已被注册。"
+        )
     
-    user = crud.create_user(db, user_in=user_in, tenant_id=user_in.tenant_id)
+    #  CRUD 创建用户
+    user = crud.create_user(db, user_in=user_in)
     return user
 
-
+#登录接口
 @router.post("/login", response_model=user_schema.LoginResponse)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -32,8 +36,33 @@ async def login_for_access_token(
 ):
     """
     OAuth2 兼容登录接口
-    返回: access_token, token_type, 以及用户完整信息
+    使用 Argon2 验证密码并返回 JWT Token
     """
-    # 1. 查找用户 (支持用户名或邮箱登录)
+    # 用户是否存在
     user = crud.get_user_by_username(db, username=form_data.username)
     if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 验证
+    if not security.verify_password(form_data.password, user.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # JWT Token
+    access_token_expires = timedelta(minutes=config.settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = security.create_access_token(
+        data={"sub": str(user.username)}, 
+        expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user
+    }

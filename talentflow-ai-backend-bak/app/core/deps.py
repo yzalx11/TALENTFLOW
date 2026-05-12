@@ -5,11 +5,10 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 # 导入app文件夹中其他模块
-from app.models import database,user
 from app import schemas, crud
 from jose import JWTError, jwt
-from app.core import security
-
+from app.core import security,database
+from app.models import user
 # 创建一个路由
 router = APIRouter()
 

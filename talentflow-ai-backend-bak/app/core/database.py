@@ -18,7 +18,7 @@ DATABASE_URL = os.getenv(
 )
 
 # 创建数据库引擎
-engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
+engine = create_engine(DATABASE_URL, echo=False)
 
 # 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=Session)

@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("正在连接数据库...")
-
+    yield 
+    print("服务正在关闭，清理资源...")
 
 app = FastAPI(title="AI蒲公英部落",lifespan=lifespan)
 
