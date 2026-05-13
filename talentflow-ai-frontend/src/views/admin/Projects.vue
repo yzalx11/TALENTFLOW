@@ -186,7 +186,7 @@ const fetchData = async () => {
   loading.value = true;
   try {
     // 1. 发送请求时带上 keyword 参数，实现智能搜索
-    const response = await axios.get('admin/projects', {
+    const response = await axios.get('admin/tasks', {
       params: { keyword: searchQuery.value }
     });
     
@@ -236,7 +236,7 @@ const handleDelete = (row) => {
     }
   ).then(async () => {
     try {
-      await axios.delete(`admin/projects/${row.id}`);
+      await axios.delete(`admin/tasks/${row.id}`);
       ElMessage.success('删除成功');
       fetchData();
     } catch (error) {
@@ -268,9 +268,9 @@ const handleSubmit = () => {
         category: form.category,
         difficulty: form.difficulty,
         // 确保数字类型：如果后端要数字，这里必须转 Number
-        price: form.price , 
+        price: Number(form.price) || 0,
         description: form.description || '', // 确保是字符串而不是 null
-        price: JSON.stringify(form.price), 
+        //duration: Number(form.duration) || 0,
         skills: form.skills,
         status: form.status 
       };
@@ -278,12 +278,12 @@ const handleSubmit = () => {
       try {
         if (form.id) {
           // 编辑模式
-          await axios.put(`admin/projects/${form.id}`, submitData);
+          await axios.put(`admin/tasks/${form.id}`, submitData);
           ElMessage.success('更新成功');
         } else {
           // 新增模式
           // 注意：新增时 submitData 里绝对不要带 id 字段
-          await axios.post('admin/projects', submitData);
+          await axios.post('admin/tasks', submitData);
           ElMessage.success('创建成功');
         }
         dialogVisible.value = false;

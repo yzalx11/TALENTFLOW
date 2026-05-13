@@ -1,17 +1,19 @@
+# app/api/v1/admin/user_manager.py
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session, select, func
+from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional
 
-from app.models.user import User
+from app.models.user import User  # 注意这里：统一从 user.py 导入
 from app.core.database import get_db
 from app.core.security import get_password_hash  
-from app.core.deps import get_current_active_admin  # 验证管理员权限
+from app.core.deps import get_current_active_admin
 
-#from app.schemas.user_schema import UserRead
+# from app.schemas.user_schema import UserRead 
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin-User-Manager"])
 
-@router.get("/users", response_model=List[User])
+@router.get("/users")
 def read_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_admin),
@@ -20,20 +22,20 @@ def read_users(
     keyword: Optional[str] = Query(None, description="搜索用户名或姓名")
 ):
     """
-    管理员接口：获取用户列表，支持分页和关键字模糊搜索
+    管理员接口：获取用户列表，支持分页和关键字模糊搜索 (SQLAlchemy 版本)
     """
-    query = select(User)
+    query = db.query(User)
     
     if keyword:
-        query = query.where(
-            (User.username.like(f"%{keyword}%")) | 
-            (User.full_name.like(f"%{keyword}%"))
+        query = query.filter(
+            or_(
+                User.username.like(f"%{keyword}%"),
+                User.full_name.like(f"%{keyword}%")
+            )
         )
         
     # 分页并执行查询
-    query = query.offset(skip).limit(limit)
-    users = db.exec(query).all()
-    
+    users = query.offset(skip).limit(limit).all()
     return users
 
 
@@ -45,21 +47,19 @@ def update_user_status(
     current_user: User = Depends(get_current_active_admin)
 ):
     """
-    管理员接口：修改用户状态 (封禁/解封)
+    管理员接口：修改用户状态
     """
-    user = db.get(User, user_id)
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="该用户不存在")
     
-    # 安全保护：防止管理员误封自己的账号
     if user.id == current_user.id and not is_active:
         raise HTTPException(status_code=400, detail="不能封禁当前登录的管理员账号")
         
     user.is_active = is_active
-    db.add(user)
     db.commit()
     
-    status_msg = "已解封 (正常)" if is_active else "已封禁"
+    status_msg = "已解封" if is_active else "已封禁"
     return {"message": f"用户 {user.username} {status_msg}"}
 
 
@@ -71,18 +71,16 @@ def reset_user_password(
     current_user: User = Depends(get_current_active_admin)
 ):
     """
-    管理员接口：重置指定用户的密码 (会自动使用 Argon2 加密)
+    管理员接口：重置指定用户的密码
     """
-    user = db.get(User, user_id)
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="该用户不存在")
         
     hashed_password = get_password_hash(new_password)
     user.password = hashed_password
     
-    db.add(user)
     db.commit()
-    
     return {"message": f"用户 {user.username} 的密码已成功重置"}
 
 
@@ -93,9 +91,9 @@ def delete_user(
     current_user: User = Depends(get_current_active_admin)
 ):
     """
-    管理员接口：彻底删除指定用户
+    管理员接口：删除指定用户
     """
-    user = db.get(User, user_id)
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="该用户不存在")
         

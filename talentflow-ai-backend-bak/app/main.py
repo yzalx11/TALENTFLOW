@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 # 导入路由
 from app.api.v1 import auth
-from app.api.v1.admin import user_manager
+from app.api.v1.admin import user_manager,task_manager,job_manager
 
 # 导入 CORS 中间件, 用于处理浏览器的跨域资源共享请求
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,8 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(user_manager.router)
+app.include_router(task_manager.router)
+app.include_router(job_manager.router)
 @app.get("/")
 async def root():
     return {"message":"Hello"}
