@@ -34,8 +34,10 @@ class JobUpdate(BaseModel):
 
 class JobOut(JobBase):
     id: int
+    pdf_path: Optional[str] = Field(None, description="PDF文件存储路径")
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime
     
+
     class Config:
         from_attributes = True

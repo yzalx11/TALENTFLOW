@@ -3,16 +3,23 @@ from contextlib import asynccontextmanager
 # 导入路由
 from app.api.v1 import auth
 from app.api.v1.admin import user_manager,task_manager,job_manager
-
+#from app.core.embedding import get_embedding_function
+from app.core.logger import logger
+from app.core.vector_store import VECTOR_DB_PATH
 # 导入 CORS 中间件, 用于处理浏览器的跨域资源共享请求
 from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("正在连接数据库...")
+    print("🚀 [系统启动] 正在执行预加载程序...")
+    try:
+        print("✅ [初始化] Embedding 模型已预先载入内存，准备就绪")
+    except Exception as e:
+        print(f"❌ [初始化失败] 模型加载出错: {e}")
+        
     yield 
-    print("服务正在关闭，清理资源...")
+    print("🛑 [系统关闭] 正在清理资源...")
 
 app = FastAPI(title="AI蒲公英部落",lifespan=lifespan)
 

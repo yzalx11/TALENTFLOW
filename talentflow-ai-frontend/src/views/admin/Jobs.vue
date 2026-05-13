@@ -21,6 +21,10 @@
         <el-icon><Plus /></el-icon>
         录入新职位
       </el-button>
+      <el-button type="success" @click="handleBatchImport">
+        <el-icon><Upload /></el-icon>
+        批量导入职位
+      </el-button>
     </el-card>
 
     <!-- 表格 -->
@@ -34,7 +38,7 @@
         <el-table-column label="技能要求" min-width="200">
           <template #default="{ row }">
             <el-tag
-              v-for="skill in parseSkills(row.skills)"
+              v-for="skill in parseSkills(row.required_skills)"
               :key="skill"
               type="info"
               size="small"
@@ -306,51 +310,64 @@ const resetForm = () => {
 };
 
 const handleSubmit = () => {
-  if (!formRef.value) return;
+    if (!formRef.value) return;
+    formRef.value.validate(async (valid) => {
+        if (valid) {
+            const formData = new FormData();
 
-  formRef.value.validate(async (valid) => {
-    if (valid) {
-      // 使用 FormData 处理文件上传和 JSON 数据混合提交
-      const formData = new FormData();
-      
-      // 1. 添加普通字段
-      formData.append('title', form.title);
-      formData.append('company', form.company);
-      formData.append('salary_range', form.salary_range);
-      formData.append('description', form.description);
-      
-      // 2. 处理技能数组
-      const skillsArr = form.skills.split(',').map(s => s.trim()).filter(s => s);
-      formData.append('skills', JSON.stringify(skillsArr));
+            // 8. 新增：添加新字段到提交数据中
+            formData.append('title', form.title);
+            formData.append('company', form.company);
+            formData.append('salary', form.salary); // 注意：后端字段名为 salary_range
+            formData.append('location', form.location);
+            formData.append('experience_requirement', form.experience_requirement);
+            formData.append('education_requirement', form.education_requirement);
+            formData.append('description', form.description);
 
-      // 3. 添加文件 (如果选择了新文件)
-      if (selectedFile.value) {
-        formData.append('file', selectedFile.value);
-      }
+            // 9. 处理技能数组
+            const skillsArr = form.required_skills
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s);
+            formData.append('required_skills', JSON.stringify(skillsArr));
 
-      try {
-        if (form.id) {
-          // 编辑模式 (PUT)
-          // 注意：如果是编辑且没传文件，后端需要处理不更新文件字段
-          await axios.put(`admin/jobs/${form.id}`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          });
-          ElMessage.success('更新成功');
-        } else {
-          // 新增模式 (POST)
-          await axios.post('admin/jobs', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          });
-          ElMessage.success('创建成功');
+            // 10. 添加文件（如果选择了新文件）
+            if (selectedFile.value) {
+                formData.append('file', selectedFile.value);
+            }
+
+            try {
+                if (form.id) {
+                    // 编辑模式（PUT）
+                    // 注意：这里假设你的 PUT 接口路径 is `/admin/jobs/${form.id}`
+                    await axios.put(`/admin/jobs/${form.id}`, formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                    ElMessage.success('更新成功');
+                } else {
+                    // 新增模式（POST）
+                    await axios.post('/admin/jobs', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                    ElMessage.success('创建成功');
+                }
+                dialogVisible.value =false;
+                fetchData();
+            } catch (err) {
+                ElMessage.error(err.response?.data?.detail || '提交失败');
+            }
         }
-        dialogVisible.value = false;
-        fetchData();
-      } catch (error) {
-        console.error(error);
-        ElMessage.error('操作失败，请检查后端日志');
-      }
-    }
-  });
+    });
+};
+
+const handleBatchImport = () => {
+  // 目前先做一个 UI 占位提示，后续在这里打开上传弹窗
+  ElMessage.info('批量导入功能正在开发中，敬请期待！');
+  
+  // 后续开发计划：
+  // 1. dialogBatchVisible.value = true; (打开专门的导入弹窗)
+  // 2. 弹窗内放入 <el-upload> 组件，支持拖拽多个文件
+  // 3. 提交给后端的 /api/v1/admin/jobs/batch-import 接口
 };
 
 onMounted(() => {

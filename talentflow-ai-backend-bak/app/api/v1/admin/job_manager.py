@@ -1,33 +1,106 @@
 # app/api/v1/admin/job_manager.py
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status ,Form, File, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List, Optional
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+import json
+import time
 
 from app.models.job_position import JobPosition
 from app.models.user import User
 from app.schemas import job_schema
 from app.core.database import get_db
 from app.core.deps import get_current_active_admin
+from app.utils.file_parser import extract_text_from_upload
+from app.core.embedding import get_embedding_function
+from app.core.logger import logger
+from app.core.llm import analyze_job_skills
+from app.core.vector_store import add_documents_to_faiss
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin-Jobs"])
 
 @router.post("/jobs", response_model=job_schema.JobOut, status_code=status.HTTP_201_CREATED)
-def create_job(
-    job_in: job_schema.JobCreate,
+async def create_job(
+    # 使用 Form(...) 接收表单里的文字字段
+    title: str = Form(...),
+    company: str = Form(...),
+    salary: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    experience_requirement: Optional[str] = Form(None),
+    education_requirement: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    required_skills: Optional[str] = Form(None), 
+    file: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_active_admin),
     db: Session = Depends(get_db)
 ):
     """
-    管理员发布新职位
-    字段匹配：job_id, title, company, salary, required_skills, description, is_active
+    管理员发布新职位 (支持 FormData 和 文件上传)
     """
-    # 检查 job_id 是否已存在
-    existing_job = db.query(JobPosition).filter(JobPosition.job_id == job_in.job_id).first()
-    if existing_job:
-        raise HTTPException(status_code=400, detail="该业务职位ID已存在")
+    # 1. 还原前端发过来的技能列表
+    parsed_skills = []
+    if required_skills:
+        try:
+            # 将前端传来的 "['Vue', 'Python']" 字符串变回 Python 的 List
+            parsed_skills = json.loads(required_skills)
+        except:
+            parsed_skills = []
 
-    new_job = JobPosition(**job_in.model_dump())
+    # 2. 自动生成一个业务职位 ID
+    job_id = f"JOB-{int(time.time())}"
+
+    # 3. 【文件处理预留位】
+    document_chunks = []
+    full_text = ""
+    
+    if file:
+        logger.info(f"📥 接收到文件: {file.filename}, 开始解析...")
+        
+        # 3.1 统一解析为纯文本
+        full_text = await extract_text_from_upload(file)
+        
+        if full_text:
+            logger.info(f"✅ 文件解析成功，提取到 {len(full_text)} 个字符。")
+            
+            # 3.2 文本切分 (Chunking) - 为下一步存入向量数据库做准备
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=250,     
+                chunk_overlap=30,   
+                separators=["\n\n", "\n", "。", "！", "?", "，", "、", " "]
+            )
+            document_chunks = text_splitter.split_text(full_text)
+            logger.info(f"🔪 文本已切分为 {len(document_chunks)} 个 Chunk。")
+            # 3.2 构造元数据 (Metadata) 
+            # 把每个文本块和当前的职位 ID 绑定，这样以后大模型搜索时，才知道这段话是哪个职位里的
+            #metadatas = [{"job_id": job_id, "source_file": file.filename} for _ in document_chunks]
+            
+            # 3.3 存入 FAISS 向量数据库！
+            logger.info("🧠 正在生成向量并存入 FAISS 数据库...")
+            #add_documents_to_faiss(chunks=document_chunks, metadatas=metadatas)
+    
+            extracted_skills = await analyze_job_skills(full_text[:2000])
+            
+            # 合并手动填写的技能与 AI 提取的技能
+            manual_skills = json.loads(required_skills) if required_skills else []
+            final_skills = list(set(manual_skills + extracted_skills))
+            
+    # 4. 存入数据库
+    new_job = JobPosition(
+        job_id=job_id,
+        title=title,
+        company=company,
+        salary=salary,
+        location=location,
+        experience_requirement=experience_requirement,
+        education_requirement=education_requirement,
+        description=description,
+        required_skills=parsed_skills,
+        is_active=True
+    )
+    
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
@@ -47,13 +120,12 @@ def read_jobs(
     """
     query = db.query(JobPosition)
     
-    # 模糊搜索逻辑：匹配标题、公司名称或业务ID
+    # 模糊搜索
     if keyword:
         query = query.filter(
             or_(
                 JobPosition.title.like(f"%{keyword}%"),
                 JobPosition.company.like(f"%{keyword}%"),
-                JobPosition.job_id.like(f"%{keyword}%")
             )
         )
     

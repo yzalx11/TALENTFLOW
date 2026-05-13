@@ -10,7 +10,7 @@ class JobPosition(Base):
     __tablename__ = "job_positions"
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    job_id = Column(String(50), unique=True, nullable=False, index=True, comment="业务职位ID")
+    job_id = Column(String(50), unique=True, nullable=True, index=True, comment="业务职位ID")
     title = Column(String(150), nullable=False, index=True, comment="职位名称")
     company = Column(String(100), nullable=False, comment="公司名称")
     
