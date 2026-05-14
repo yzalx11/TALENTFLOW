@@ -1,6 +1,5 @@
 <template>
   <div class="job-list">
-    <!-- 搜索和操作栏 -->
     <el-card class="search-card">
       <el-input
         v-model="searchQuery"
@@ -27,14 +26,15 @@
       </el-button>
     </el-card>
 
-    <!-- 表格 -->
     <el-card class="table-card">
       <el-table :data="data" v-loading="loading" border stripe>
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="title" label="职位名称" min-width="180" />
         <el-table-column prop="company" label="公司" width="150" />
-        <el-table-column prop="salary_range" label="薪资" width="120" />
-        
+        <el-table-column prop="salary" label="薪资" width="120" />
+        <el-table-column prop="location" label="工作地点" width="120" />
+        <el-table-column prop="experience_requirement" label="经验要求" width="120" />
+        <el-table-column prop="education_requirement" label="学历要求" width="120" />
         <el-table-column label="技能要求" min-width="200">
           <template #default="{ row }">
             <el-tag
@@ -77,7 +77,6 @@
       </el-table>
     </el-card>
 
-    <!-- 编辑/新增弹窗 -->
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
@@ -98,8 +97,20 @@
           <el-input v-model="form.company" placeholder="如：字节跳动" />
         </el-form-item>
 
-        <el-form-item label="薪资范围" prop="salary_range">
-          <el-input v-model="form.salary_range" placeholder="如：25k-40k" />
+        <el-form-item label="薪资范围" prop="salary">
+          <el-input v-model="form.salary" placeholder="如：25k-40k" />
+        </el-form-item>
+
+        <el-form-item label="工作地点" prop="location">
+          <el-input v-model="form.location" placeholder="如：北京" />
+        </el-form-item>
+
+        <el-form-item label="经验要求" prop="experience_requirement">
+          <el-input v-model="form.experience_requirement" placeholder="如：3-5年" />
+        </el-form-item>
+
+        <el-form-item label="学历要求" prop="education_requirement">
+          <el-input v-model="form.education_requirement" placeholder="如：本科" />
         </el-form-item>
 
         <el-form-item label="技能要求" prop="skills">
@@ -118,7 +129,6 @@
           />
         </el-form-item>
 
-        <!-- 文件上传组件 -->
         <el-form-item label="招聘PDF">
           <el-upload
             class="upload-demo"
@@ -130,6 +140,8 @@
             :on-change="handleFileChange"
             :on-remove="handleFileRemove"
             accept=".pdf"
+            v-loading="uploadLoading"
+            element-loading-text="AI正在拼命解析中..."
           >
             <el-icon class="el-icon--upload"><upload-filled /></el-icon>
             <div class="el-upload__text">
@@ -137,7 +149,7 @@
             </div>
             <template #tip>
               <div class="el-upload__tip">
-                上传的 PDF 将被解析并存入向量数据库用于 AI 匹配
+                上传后将自动识别内容并填入上方表单
               </div>
             </template>
           </el-upload>
@@ -155,42 +167,56 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search, UploadFilled } from '@element-plus/icons-vue';
-import axios from '../../utils/request'; // 确保你的 axios 实例配置正确
+import axios from '../../utils/request';
 
 // --- 状态定义 ---
 const data = ref([]);
 const loading = ref(false);
+const uploadLoading = ref(false); // 专门用于上传解析的loading动画
 const searchQuery = ref('');
 
 // 弹窗相关
 const dialogVisible = ref(false);
 const dialogTitle = ref('录入新职位');
 const formRef = ref(null);
-const selectedFile = ref(null); // 存储选中的文件对象
-const fileList = ref([]); // el-upload 需要的文件列表
+const selectedFile = ref(null);
+const fileList = ref([]);
+const isEdit = ref(false);
 
-// --- 表单初始值 ---
+// --- 修复1 & 修复2：补全表单初始值字段 ---
 const initialForm = {
   id: null,
   title: '',
   company: '',
-  salary_range: '',
-  skills: '', // 这里存字符串，提交时转数组
+  salary: '', // 统一使用 salary
+  location: '',
+  experience_requirement: '',
+  education_requirement: '',
+  skills: '', 
   description: '',
-  file_path: '' // 如果是编辑模式，可能已经有文件路径
+  file_path: '' 
 };
 
 const form = reactive({ ...initialForm });
 
-// 校验规则
-const rules = {
+const rules = reactive({
   title: [{ required: true, message: '请输入职位名称', trigger: 'blur' }],
   company: [{ required: true, message: '请输入公司名称', trigger: 'blur' }],
-  salary_range: [{ required: true, message: '请输入薪资范围', trigger: 'blur' }]
-};
+  skills: [
+    {
+      required: true,
+      validator: (rule, value, callback) => {
+        if (!value || value.trim() === '') {
+          callback(new Error('请输入或选择至少一项技能'));
+          return;
+        }
+        callback();
+      },
+      trigger: ['blur', 'change']
+    }
+  ]
+})
 
-// --- 辅助函数 ---
-// 将后端返回的 JSON 数组或字符串转为数组，方便 el-tag 循环
 const parseSkills = (skills) => {
   if (!skills) return [];
   if (Array.isArray(skills)) return skills;
@@ -201,11 +227,9 @@ const parseSkills = (skills) => {
   }
 };
 
-// --- API 请求 ---
 const fetchData = async () => {
   loading.value = true;
   try {
-    // 修改点：将参数名改为 keyword，与后端 read_jobs(keyword: str) 对应
     const response = await axios.get('admin/jobs', {
       params: { keyword: searchQuery.value } 
     });
@@ -217,26 +241,59 @@ const fetchData = async () => {
   }
 };
 
-// --- API 请求 ---
-// const fetchData = async () => {
-//   loading.value = true;
-//   try {
-//     // 假设后端接口支持 ?q= 查询
-//     const response = await axios.get('admin/jobs', {
-//       params: { q: searchQuery.value }
-//     });
-//     data.value = response.data || response; // 根据实际返回结构调整
-//   } catch (error) {
-//     ElMessage.error('获取职位列表失败');
-//   } finally {
-//     loading.value = false;
-//   }
-// };
-
-// --- 文件处理 ---
-const handleFileChange = (file, uploadFileList) => {
-  selectedFile.value = file.raw; // 获取原始文件对象
+// --- 修复3：合并两个 handleFileChange，实现既绑定文件，又触发预解析 ---
+// --- 修复：兼容 axios 拦截器数据解包的 handleFileChange ---
+// --- 修复：兼容 axios 拦截器，并增加默认值兜底的 handleFileChange ---
+const handleFileChange = async (file, uploadFileList) => {
+  selectedFile.value = file.raw; 
   fileList.value = uploadFileList;
+  if (!file.raw) return;
+  
+  const formData = new FormData();
+  formData.append('file', file.raw);
+  
+  try {
+    uploadLoading.value = true;
+    const res = await axios.post('admin/jobs/parse', formData);
+    console.log("【调试】AI解析接口返回的数据:", res); 
+
+    // ✅ 修复：兼容两种axios拦截器情况，直接拿到正确的aiData
+    let aiData;
+    if (res.success && res.data) {
+      // 拦截器已解包：res = {success: true, data: {...}}
+      aiData = res.data;
+    } else if (res.data && res.data.success && res.data.data) {
+      // 拦截器未解包：res.data = {success: true, data: {...}}
+      aiData = res.data.data;
+    } else {
+      throw new Error("后端返回格式错误");
+    }
+
+    // 字段默认值兜底
+    aiData.title = aiData.title || `解析职位-${file.name.split('.')[0]}`;
+    aiData.company = aiData.company || '未知公司';
+    aiData.salary = aiData.salary || '面议';
+    aiData.location = aiData.location || '不限';
+    aiData.experience_requirement = aiData.experience_requirement || '不限';
+    aiData.education_requirement = aiData.education_requirement || '不限';
+
+    // 自动填充表单
+    Object.assign(form, aiData);
+
+    // 处理技能数组转字符串
+    if (Array.isArray(aiData.required_skills)) {
+      form.skills = aiData.required_skills.join(', ');
+    } else if (typeof aiData.required_skills === 'string') {
+      form.skills = aiData.required_skills;
+    }
+
+    ElMessage.success('✨ AI 已成功解析文档并自动填充表单！');
+  } catch (error) {
+    console.error("解析报错:", error)
+    ElMessage.warning('自动解析响应失败，请检查后端服务');
+  } finally {
+    uploadLoading.value = false;
+  }
 };
 
 const handleFileRemove = () => {
@@ -245,29 +302,27 @@ const handleFileRemove = () => {
 };
 
 const handleViewFile = (filePath) => {
-  // 根据后端返回的文件路径逻辑，可能是直接打开，也可能是下载
   window.open(filePath, '_blank');
 };
 
-// --- 事件处理 ---
 const handleEdit = (row) => {
   Object.assign(form, row);
   
-  // 处理技能标签显示 (如果是数组转字符串)
-  if (Array.isArray(row.skills)) {
-    form.skills = row.skills.join(', ');
+  // 处理技能标签显示
+  if (Array.isArray(row.required_skills)) {
+    form.skills = row.required_skills.join(', ');
+  } else if (typeof row.required_skills === 'string') {
+    form.skills = row.required_skills;
   }
 
-  // 处理文件列表回显
   if (row.file_path) {
-    fileList.value = [
-      { name: '已上传文件.pdf', url: row.file_path }
-    ];
+    fileList.value = [{ name: '已上传文件.pdf', url: row.file_path }];
   } else {
     fileList.value = [];
   }
 
   dialogTitle.value = '编辑职位';
+  isEdit.value = true;
   dialogVisible.value = true;
 };
 
@@ -276,6 +331,7 @@ const handleCreate = () => {
   fileList.value = [];
   selectedFile.value = null;
   dialogTitle.value = '录入新职位';
+  isEdit.value = false;
   dialogVisible.value = true;
 };
 
@@ -309,65 +365,66 @@ const resetForm = () => {
   selectedFile.value = null;
 };
 
-const handleSubmit = () => {
-    if (!formRef.value) return;
-    formRef.value.validate(async (valid) => {
-        if (valid) {
-            const formData = new FormData();
+const handleSubmit = async () => {
+  if (!formRef.value) return
+  
+  await formRef.value.validate(async (valid) => {
+    if (valid) {
+      const formData = new FormData()
+      
+      // 字段非空处理（避免undefined）
+      formData.append('title', form.title.trim() || '')
+      formData.append('company', form.company.trim() || '')
+      formData.append('salary', form.salary ? form.salary.trim() : '')
+      formData.append('location', form.location ? form.location.trim() : '')
+      formData.append('experience_requirement', form.experience_requirement ? form.experience_requirement.trim() : '')
+      formData.append('education_requirement', form.education_requirement ? form.education_requirement.trim() : '')
+      formData.append('description', form.description ? form.description.trim() : '')
 
-            // 8. 新增：添加新字段到提交数据中
-            formData.append('title', form.title);
-            formData.append('company', form.company);
-            formData.append('salary', form.salary); // 注意：后端字段名为 salary_range
-            formData.append('location', form.location);
-            formData.append('experience_requirement', form.experience_requirement);
-            formData.append('education_requirement', form.education_requirement);
-            formData.append('description', form.description);
+      // 安全处理技能列表（兼容中英文逗号）
+      let finalSkills = []
+      if (typeof form.skills === 'string' && form.skills.trim()) {
+        finalSkills = form.skills.split(/[,，]/).map(s => s.trim()).filter(s => s)
+        finalSkills = [...new Set(finalSkills)] // 去重
+      }
+      formData.append('required_skills', JSON.stringify(finalSkills))
 
-            // 9. 处理技能数组
-            const skillsArr = form.required_skills
-                .split(',')
-                .map(s => s.trim())
-                .filter(s => s);
-            formData.append('required_skills', JSON.stringify(skillsArr));
+      // 追加文件（如果有）
+      if (selectedFile.value) {
+        formData.append('file', selectedFile.value)
+      }
 
-            // 10. 添加文件（如果选择了新文件）
-            if (selectedFile.value) {
-                formData.append('file', selectedFile.value);
-            }
-
-            try {
-                if (form.id) {
-                    // 编辑模式（PUT）
-                    // 注意：这里假设你的 PUT 接口路径 is `/admin/jobs/${form.id}`
-                    await axios.put(`/admin/jobs/${form.id}`, formData, {
-                        headers: { 'Content-Type': 'multipart/form-data' }
-                    });
-                    ElMessage.success('更新成功');
-                } else {
-                    // 新增模式（POST）
-                    await axios.post('/admin/jobs', formData, {
-                        headers: { 'Content-Type': 'multipart/form-data' }
-                    });
-                    ElMessage.success('创建成功');
-                }
-                dialogVisible.value =false;
-                fetchData();
-            } catch (err) {
-                ElMessage.error(err.response?.data?.detail || '提交失败');
-            }
+      try {
+        // 增加请求超时（处理大文件/慢服务）
+        const axiosConfig = { timeout: 60000 }
+        if (isEdit.value) {
+          await axios.put(`admin/jobs/${form.id}`, formData, axiosConfig)
+          ElMessage.success('职位更新成功')
+        } else {
+          await axios.post('admin/jobs', formData, axiosConfig)
+          ElMessage.success('职位创建成功')
         }
-    });
-};
+        dialogVisible.value = false
+        fetchData()
+      } catch (error) {
+        console.error("提交失败详情:", error)
+        // 分场景提示错误
+        if (error.response) {
+          // 后端返回500，展示具体错误
+          ElMessage.error(`提交失败: ${error.response.data.detail || '服务器内部错误'}`)
+        } else if (error.request) {
+          // 连接被重置（后端崩溃/超时）
+          ElMessage.error('提交失败: 服务器连接中断，请检查后端服务')
+        } else {
+          ElMessage.error(`提交失败: ${error.message}`)
+        }
+      }
+    }
+  })
+}
 
 const handleBatchImport = () => {
-  // 目前先做一个 UI 占位提示，后续在这里打开上传弹窗
   ElMessage.info('批量导入功能正在开发中，敬请期待！');
-  
-  // 后续开发计划：
-  // 1. dialogBatchVisible.value = true; (打开专门的导入弹窗)
-  // 2. 弹窗内放入 <el-upload> 组件，支持拖拽多个文件
-  // 3. 提交给后端的 /api/v1/admin/jobs/batch-import 接口
 };
 
 onMounted(() => {

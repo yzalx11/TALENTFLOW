@@ -13,7 +13,6 @@ def get_embedding_function():
     if _embedding_instance is not None:
         return _embedding_instance
     
-    current_dir = os.path.dirname(os.path.abspath(__file__))
     local_model_path = r"D:\py_lesson\RAG-Customer-Service\smart-cs-backend\app\rag\model\text2vec-base-chinese"
 
     

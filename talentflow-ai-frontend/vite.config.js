@@ -16,6 +16,7 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8000', // 你的 FastAPI 后端地址（请确认你的后端端口是 8000）
         changeOrigin: true, // 允许跨域
+        timeout:60000,
         rewrite: (path) => path.replace(/^\/api/, '/api'), // 重写路径（这里其实不需要改，保留即可）
       },
     },

@@ -66,3 +66,51 @@ async def analyze_job_skills(text: str) -> list[str]:
     except Exception as e:
         logger.error(f"❌ LLM 提取技能时发生错误: {e}")
         return []
+    
+async def parse_job_full_info(text: str) -> dict:
+    """
+    全字段解析：将 JD 文本转换为结构化 JSON，用于前端自动填表
+    """
+    llm = get_llm()
+    
+    # 定义期望的 JSON 结构
+    template = """
+    你是一个专业的招聘数据提取助手。请从下方的职位描述文本中提取关键信息。
+    要求：
+    1. 必须返回严格的 JSON 格式。
+    2. 如果某项未提及，请填入"未知"或空列表。
+    3. 薪资请提取范围（如 15k-25k），如果没有则填"面议"。
+    
+    文本内容:
+    {text}
+
+    请输出以下格式的 JSON:
+    {{
+        "title": "职位名称",
+        "company": "公司名称",
+        "salary": "薪资范围",
+        "location": "工作地点",
+        "experience_requirement": "经验要求",
+        "education_requirement": "学历要求",
+        "required_skills": ["技能1", "技能2"],
+        "description": "职位职责简述"
+    }}
+    """
+    
+    try:
+        # 限制输入长度，防止 Token 溢出
+        input_text = text[:2000]
+        # 直接调用模型获取结果
+        response = await llm.ainvoke(template.format(text=input_text))
+        content = response.content.strip()
+        
+        # 清洗可能带有的 Markdown 标记
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+            
+        return json.loads(content)
+    except Exception as e:
+        logger.error(f"❌ LLM 全字段解析失败: {e}")
+        return {}

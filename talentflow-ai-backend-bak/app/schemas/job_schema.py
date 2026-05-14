@@ -4,7 +4,7 @@ from typing import Optional, List
 from datetime import datetime
 
 class JobBase(BaseModel):
-    job_id: str = Field(..., description="业务职位ID")
+    job_id: Optional[str] = Field(default=None, description="业务职位ID")
     title: str = Field(..., description="职位名称")
     company: str = Field(..., description="公司名称")
     
@@ -37,7 +37,10 @@ class JobOut(JobBase):
     pdf_path: Optional[str] = Field(None, description="PDF文件存储路径")
     created_at: datetime
     updated_at: datetime
-    
-
+    job_id: Optional[str] = None
+    salary: Optional[str] = None
+    location: Optional[str] = None
+    experience_requirement: Optional[str] = None
+    education_requirement: Optional[str] = None
     class Config:
         from_attributes = True
