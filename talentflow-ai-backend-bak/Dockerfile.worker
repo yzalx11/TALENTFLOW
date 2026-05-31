@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
-COPY .env ./
+# .env 通过 Volume 挂载，不打包进镜像
 
 RUN mkdir -p /app/data/models /app/data/faiss_db /app/data/uploads
 
