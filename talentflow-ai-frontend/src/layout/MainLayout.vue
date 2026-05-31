@@ -57,14 +57,14 @@
       <el-header class="header">
         <div class="header-right">
           <el-dropdown>
-            <span class="el-dropdown-link">
-              <el-avatar :size="30" src="https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png" />
-              部落成员
+            <span class="el-dropdown-link" style="display:flex;align-items:center;gap:8px">
+              <el-avatar :size="28" src="https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png" />
+              <span>{{ userStore.userInfo?.full_name || userStore.userInfo?.username || '用户' }}</span>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item>个人中心</el-dropdown-item>
-                <el-dropdown-item>设置</el-dropdown-item>
+                <el-dropdown-item :divided="true" command="logout" @click="handleLogout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>

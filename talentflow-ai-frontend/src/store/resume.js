@@ -43,24 +43,13 @@ export const useResumeStore = defineStore('resume', () => {
    */
   const fetchResumes = async () => {
     try {
-      // --- 真实 API 调用示例 ---
-      // const res = await getResumeListAPI()
-      // resumes.value = res.data.list
-      
-      // --- 模拟数据 (请替换为真实 API) ---
-      // 模拟后端返回的数据结构
-      const mockData = [
-        { id: 101, name: '李四-主简历-全栈开发', is_default: true, updated_at: '2023-10-01' },
-        { id: 102, name: 'Li Si - English CV', is_default: false, updated_at: '2023-11-05' },
-        { id: 103, name: '李四-精简版(实习)', is_default: false, updated_at: '2023-12-20' }
-      ]
-      resumes.value = mockData
+      const res = await getResumeListAPI()
+      const data = res.data || res
+      resumes.value = (data || []).map(r => ({ ...r, is_default: r.is_default == 1 }))
 
-      // 初始化逻辑：如果 currentResumeId 为空，或者当前的 ID 不在列表中，则自动设为默认简历
       if (!currentResumeId.value || !resumes.value.find(r => r.id === currentResumeId.value)) {
         currentResumeId.value = defaultResumeId.value
       }
-
     } catch (error) {
       console.error('获取简历列表失败:', error)
     }

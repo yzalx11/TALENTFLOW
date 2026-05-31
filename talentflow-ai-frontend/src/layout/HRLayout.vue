@@ -47,9 +47,9 @@
               {{ userName }} <el-icon class="el-icon--right"><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
-              <el-menu>
-                <el-menu-item index="logout">退出登录</el-menu-item>
-              </el-menu>
+              <el-dropdown-menu>
+                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
             </template>
           </el-dropdown>
         </div>
@@ -77,7 +77,7 @@ const userStore = useUserStore()
 
 // 计算属性：从 Store 中获取用户名，如果没有则默认为 'HR专员'
 const userName = computed(() => {
-  return userStore.name || 'HR专员'
+  return userStore.userInfo?.full_name || userStore.userInfo?.username || 'HR'
 })
 
 // 处理下拉菜单命令

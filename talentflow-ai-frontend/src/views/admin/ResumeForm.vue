@@ -43,9 +43,6 @@
         </el-col>
       </el-row>
 
-      <!-- 职位意向 -->
-      <el-divider content-position="left">求职意向</el-divider>
-
       <el-form-item label="意向职位" prop="title">
         <el-input v-model="form.title" placeholder="例如：前端开发工程师" />
       </el-form-item>

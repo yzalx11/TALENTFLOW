@@ -95,7 +95,7 @@ const onSubmit = async () => {
     formData.append('password', form.password);
 
     // 3. 发送 POST 请求
-    const response = await axios.post('http://127.0.0.1:8000/api/v1/auth/login', formData, {
+    const response = await axios.post('/api/v1/auth/login', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     });
 

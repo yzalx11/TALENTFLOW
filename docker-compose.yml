@@ -1,0 +1,90 @@
+# TalentFlow-AI 单机部署
+version: "3.8"
+
+services:
+  # ============ 后端 FastAPI ============
+  backend:
+    build:
+      context: ./talentflow-ai-backend-bak
+      dockerfile: Dockerfile
+    image: ghcr.io/yzalx11/talentflow/backend:latest
+    container_name: talentflow-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MYSQL_SERVER=${MYSQL_SERVER:-mysql}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-password}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-talentflow_db}
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      # .env 配置挂载，容器外修改立即生效
+      - ./talentflow-ai-backend-bak/.env:/app/.env:ro
+      # 模型文件不打包进镜像，从宿主机挂载
+      - ${MODEL_DIR:-/opt/models}:/app/data/models:ro
+      - ./talentflow-ai-backend-bak/data/faiss_db:/app/data/faiss_db
+      - ./talentflow-ai-backend-bak/data/uploads:/app/data/uploads
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # ============ Celery Worker ============
+  worker:
+    build:
+      context: ./talentflow-ai-backend-bak
+      dockerfile: Dockerfile.worker
+    image: ghcr.io/yzalx11/talentflow/worker:latest
+    container_name: talentflow-worker
+    environment:
+      - MYSQL_SERVER=${MYSQL_SERVER:-mysql}
+      - MYSQL_USER=${MYSQL_USER:-root}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-password}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-talentflow_db}
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./talentflow-ai-backend-bak/.env:/app/.env:ro
+      - ${MODEL_DIR:-/opt/models}:/app/data/models:ro
+      - ./talentflow-ai-backend-bak/data/faiss_db:/app/data/faiss_db
+      - ./talentflow-ai-backend-bak/data/uploads:/app/data/uploads
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # ============ 前端 Nginx ============
+  frontend:
+    build:
+      context: ./talentflow-ai-frontend
+      dockerfile: Dockerfile
+    image: ghcr.io/yzalx11/talentflow/frontend:latest
+    container_name: talentflow-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # ============ Redis ============
+  redis:
+    image: redis:7-alpine
+    container_name: talentflow-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # ============ MySQL（可选，也可用外部） ============
+  mysql:
+    image: mysql:8.0
+    container_name: talentflow-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD:-password}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-talentflow_db}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

@@ -26,3 +26,22 @@ logs/
 *.DS_Store
 # 如果有本地测试数据库文件
 *.sqlite3
+
+# --- 课程资料 ---
+lesson*.pptx
+*.docx
+
+# --- 开发文档 ---
+*issues*.md
+redis-*.md
+
+# --- 临时数据 ---
+job.csv
+*.csv
+*.sql
+*.tar.gz
+
+# --- 本地上传文件 ---
+data/uploads/
+__pycache__/
+*.pyc

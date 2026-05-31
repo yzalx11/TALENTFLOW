@@ -5,24 +5,12 @@
 
       <el-form :model="form" :rules="rules" ref="registerFormRef" label-position="top">
 
-        <!-- 租户选择 (新增) -->
-        <el-form-item label="所属公司" prop="tenant_id">
-          <el-select 
-            v-model="form.tenant_id" 
-            placeholder="请选择您所在的公司" 
-            style="width: 100%"
-          >
-            <el-option
-              v-for="tenant in tenants"
-              :key="tenant.id"
-              :label="tenant.name"
-              :value="tenant.id"
-            />
-          </el-select>
-        </el-form-item>
-
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" placeholder="请输入用户名" />
+        </el-form-item>
+
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="form.email" placeholder="请输入邮箱（选填）" />
         </el-form-item>
 
         <el-form-item label="密码" prop="password">
@@ -47,7 +35,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue';
+import { reactive, ref } from 'vue';
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
@@ -55,19 +43,15 @@ import { useRouter } from 'vue-router';
 const router = useRouter();
 const loading = ref(false);
 const registerFormRef = ref(null);
-const tenants = ref([]); // 存储租户列表
 
-// 表单数据
 const form = reactive({
   username: '',
+  email: '',
   password: '',
   confirm_password: '',
-  tenant_id: null // 新增字段，对应数据库外键
 });
 
-// 校验规则
 const rules = {
-  tenant_id: [{ required: true, message: '请选择所属公司', trigger: 'change' }],
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
   confirm_password: [
@@ -85,41 +69,27 @@ const rules = {
   ]
 };
 
-// 页面加载时获取租户列表
-const fetchTenants = async () => {
-  try {
-    const response = await axios.get('http://127.0.0.1:8000/api/v1/auth/tenants');
-    tenants.value = response.data;
-  } catch (error) {
-    ElMessage.error('获取公司列表失败');
-  }
-};
-
 const onSubmit = async () => {
   if (!registerFormRef.value) return;
-  
-  await registerFormRef.value.validate(async (valid) => {
-    if (!valid) return;
-  });
 
   try {
+    await registerFormRef.value.validate();
     loading.value = true;
-    // 发送注册请求，注意这里包含了 tenant_id
-    await axios.post('http://127.0.0.1:8000/api/v1/auth/register', form);
-    
+    await axios.post('/api/v1/auth/register', {
+      username: form.username,
+      email: form.email || undefined,
+      password: form.password,
+    });
     ElMessage.success('注册成功，请登录');
     router.push('/login');
   } catch (error) {
-    ElMessage.error(error.response?.data?.detail || '注册失败');
+    if (error?.response?.data?.detail) {
+      ElMessage.error(error.response.data.detail);
+    }
   } finally {
     loading.value = false;
   }
 };
-
-// 初始化
-onMounted(() => {
-  fetchTenants();
-});
 </script>
 
 <style scoped>

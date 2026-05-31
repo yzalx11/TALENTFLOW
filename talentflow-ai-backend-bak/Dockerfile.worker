@@ -1,0 +1,19 @@
+# talentflow-ai-backend-bak/Dockerfile.worker
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libjpeg-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app/ ./app/
+COPY .env ./
+
+RUN mkdir -p /app/data/models /app/data/faiss_db /app/data/uploads
+
+# Celery Worker — 不暴露端口，只连 Redis
+CMD ["celery", "-A", "app.celery_app", "worker", "-l", "info", "-P", "solo"]

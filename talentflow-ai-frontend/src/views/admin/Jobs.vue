@@ -27,7 +27,7 @@
     </el-card>
 
     <el-card class="table-card">
-      <el-table :data="data" v-loading="loading" border stripe>
+      <el-table :data="paginatedData" v-loading="loading" border stripe>
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="title" label="职位名称" min-width="180" />
         <el-table-column prop="company" label="公司" width="150" />
@@ -75,6 +75,17 @@
           </template>
         </el-table-column>
       </el-table>
+      <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="data.length"
+          :page-sizes="[15, 30, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          background
+          @size-change="() => currentPage = 1"
+        />
+      </div>
     </el-card>
 
     <el-dialog
@@ -114,9 +125,14 @@
         </el-form-item>
 
         <el-form-item label="技能要求" prop="skills">
-          <el-input 
-            v-model="form.skills" 
-            placeholder="请输入技能，用逗号分隔 (如：Vue3, TS, Webpack)" 
+          <el-select
+            v-model="form.skills"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            placeholder="输入技能后回车添加"
+            style="width: 100%"
           />
         </el-form-item>
 
@@ -160,11 +176,41 @@
         <el-button type="primary" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+    <el-dialog v-model="batchDialogVisible" title="批量导入职位" width="500px">
+      <div style="text-align: center;">
+        <el-upload
+          class="upload-demo"
+          drag
+          action="#" 
+          :auto-upload="false"
+          :limit="1"
+          :on-change="handleBatchFileChange"
+          :on-remove="() => batchFile = null"
+          accept=".pdf,.docx,.txt"
+          v-loading="batchLoading"
+          element-loading-text="🤖 AI 正在拼命阅读长文档，拆分多岗位..."
+        >
+          <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+          <div class="el-upload__text">拖拽包含多个岗位的长文档 或 <em>点击上传</em></div>
+          <template #tip>
+            <div class="el-upload__tip">
+              支持 Word/PDF/TXT。系统将自动提取文档内的所有职位，并全部入库。
+            </div>
+          </template>
+        </el-upload>
+      </div>
+      <template #footer>
+        <el-button @click="batchDialogVisible = false" :disabled="batchLoading">取消</el-button>
+        <el-button type="success" @click="submitBatchImport" :loading="batchLoading" :disabled="!batchFile">
+          开始批量导入
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted ,computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search, UploadFilled } from '@element-plus/icons-vue';
 import axios from '../../utils/request';
@@ -175,6 +221,29 @@ const loading = ref(false);
 const uploadLoading = ref(false); // 专门用于上传解析的loading动画
 const searchQuery = ref('');
 
+// --- 分页状态 ---
+const currentPage = ref(1); // 当前页码
+const pageSize = ref(15);    // 每页显示 15 条
+
+// 💡 核心逻辑：计算当前页面应该显示的数据片段
+const paginatedData = computed(() => {
+  // 1. 安全兜底：如果 data.value 还没加载好，或者不是数组，直接返回空数组
+  if (!data.value || !Array.isArray(data.value)) {
+    return [];
+  }
+  
+  // 2. 正常切片
+  const start = (currentPage.value - 1) * pageSize.value;
+  const end = start + pageSize.value;
+  return data.value.slice(start, end);
+});
+
+// 当搜索或重新获取数据时，重置页码到第一页
+const handleSearch = () => {
+  currentPage.value = 1;
+  fetchData();
+};
+
 // 弹窗相关
 const dialogVisible = ref(false);
 const dialogTitle = ref('录入新职位');
@@ -183,7 +252,59 @@ const selectedFile = ref(null);
 const fileList = ref([]);
 const isEdit = ref(false);
 
-// --- 修复1 & 修复2：补全表单初始值字段 ---
+const batchDialogVisible = ref(false);
+const batchLoading = ref(false);
+const batchFile = ref(null);
+
+
+const handleBatchImport = () => {
+  batchFile.value = null;
+  batchDialogVisible.value = true;
+};
+
+// 批量文件监听
+const handleBatchFileChange = (file) => {
+  batchFile.value = file.raw;
+};
+
+// 批量提交的核心函数
+const submitBatchImport = async () => {
+  if (!batchFile.value) return;
+
+  const formData = new FormData();
+  formData.append('file', batchFile.value);
+
+  try {
+    batchLoading.value = true;
+    
+    // 调用我们新写的后端批量接口
+    const res = await axios.post('admin/jobs/batch', formData, {
+      timeout: 120000 
+    });
+    // 兼容拦截器
+    const responseData = res.data || res;
+
+    if (responseData && responseData.success) {
+      ElMessage.success(`🎉 批量导入成功！系统共识别并存入 ${responseData.count} 个职位`);
+      batchDialogVisible.value = false;
+      fetchData(); // 立即刷新表格数据，新职位瞬间显示！
+    } else {
+      ElMessage.warning('未能识别到职位信息，请检查文档内容');
+    }
+  } catch (error) {
+    console.error("批量导入失败:", error);
+    // 优化超时报错提示
+    if (error.code === 'ECONNABORTED' || (error.message && error.message.includes('timeout'))) {
+      ElMessage.warning('请求超时：AI解析的内容较多，后台仍在处理中，请稍后手动刷新列表查看。');
+    } else {
+      ElMessage.error('服务器错误或连接中断，请检查后端服务');
+    }
+  } finally {
+    batchLoading.value = false;
+  }
+};
+
+// ---补全表单初始值字段 ---
 const initialForm = {
   id: null,
   title: '',
@@ -192,7 +313,7 @@ const initialForm = {
   location: '',
   experience_requirement: '',
   education_requirement: '',
-  skills: '', 
+  skills: [],
   description: '',
   file_path: '' 
 };
@@ -206,7 +327,7 @@ const rules = reactive({
     {
       required: true,
       validator: (rule, value, callback) => {
-        if (!value || value.trim() === '') {
+        if (!value || (Array.isArray(value) && value.length === 0)) {
           callback(new Error('请输入或选择至少一项技能'));
           return;
         }
@@ -280,11 +401,11 @@ const handleFileChange = async (file, uploadFileList) => {
     // 自动填充表单
     Object.assign(form, aiData);
 
-    // 处理技能数组转字符串
+    // 技能数组直接赋值
     if (Array.isArray(aiData.required_skills)) {
-      form.skills = aiData.required_skills.join(', ');
-    } else if (typeof aiData.required_skills === 'string') {
       form.skills = aiData.required_skills;
+    } else if (typeof aiData.required_skills === 'string') {
+      form.skills = aiData.required_skills.split(/[,，]/).map(s => s.trim()).filter(s => s);
     }
 
     ElMessage.success('✨ AI 已成功解析文档并自动填充表单！');
@@ -308,11 +429,11 @@ const handleViewFile = (filePath) => {
 const handleEdit = (row) => {
   Object.assign(form, row);
   
-  // 处理技能标签显示
+  // 技能数组直接赋值
   if (Array.isArray(row.required_skills)) {
-    form.skills = row.required_skills.join(', ');
+    form.skills = [...row.required_skills];
   } else if (typeof row.required_skills === 'string') {
-    form.skills = row.required_skills;
+    form.skills = parseSkills(row.required_skills);
   }
 
   if (row.file_path) {
@@ -327,7 +448,7 @@ const handleEdit = (row) => {
 };
 
 const handleCreate = () => {
-  Object.assign(form, initialForm);
+  Object.assign(form, { ...initialForm, skills: [] });
   fileList.value = [];
   selectedFile.value = null;
   dialogTitle.value = '录入新职位';
@@ -360,7 +481,7 @@ const resetForm = () => {
   if (formRef.value) {
     formRef.value.resetFields();
   }
-  Object.assign(form, initialForm);
+  Object.assign(form, { ...initialForm, skills: [] });
   fileList.value = [];
   selectedFile.value = null;
 };
@@ -381,12 +502,8 @@ const handleSubmit = async () => {
       formData.append('education_requirement', form.education_requirement ? form.education_requirement.trim() : '')
       formData.append('description', form.description ? form.description.trim() : '')
 
-      // 安全处理技能列表（兼容中英文逗号）
-      let finalSkills = []
-      if (typeof form.skills === 'string' && form.skills.trim()) {
-        finalSkills = form.skills.split(/[,，]/).map(s => s.trim()).filter(s => s)
-        finalSkills = [...new Set(finalSkills)] // 去重
-      }
+      // 技能已为数组，去重后提交
+      const finalSkills = [...new Set(form.skills || [])].filter(s => s)
       formData.append('required_skills', JSON.stringify(finalSkills))
 
       // 追加文件（如果有）
@@ -423,9 +540,7 @@ const handleSubmit = async () => {
   })
 }
 
-const handleBatchImport = () => {
-  ElMessage.info('批量导入功能正在开发中，敬请期待！');
-};
+
 
 onMounted(() => {
   fetchData();

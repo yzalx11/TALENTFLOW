@@ -27,6 +27,7 @@ def create_user(db:SQLASession,user_in:schemas.UserCreate) -> user_model.User:
     hashed_password = security.get_password_hash(user_in.password)
     db_user = user_model.User(
         username=user_in.username,
+        email=user_in.email or f"{user_in.username}@talentflow.ai",
         password=hashed_password,
     )
     db.add(db_user)

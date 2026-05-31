@@ -56,15 +56,14 @@
                   <el-icon class="question-icon"><QuestionFilled /></el-icon>
                 </el-tooltip>
               </div>
-              <el-tooltip content="刷新推荐列表">
-                <el-icon 
-                  class="refresh-icon" 
-                  :class="{ 'is-rotating': pageLoading }" 
-                  @click="fetchRecommendations"
-                >
-                  <Refresh />
-                </el-icon>
-              </el-tooltip>
+              <div style="display:flex;align-items:center;gap:10px">
+                <el-button size="small" type="success" @click="runAgentAutoApply" :loading="agentLoading">
+                  🚀 一键智能投递
+                </el-button>
+                <el-tooltip content="刷新推荐列表">
+                  <el-icon class="refresh-icon" :class="{ 'is-rotating': pageLoading }" @click="fetchRecommendations"><Refresh /></el-icon>
+                </el-tooltip>
+              </div>
             </div>
           </template>
 
@@ -80,7 +79,7 @@
               <!-- 职位列表 -->
               <div v-else class="job-list">
                 <div v-for="(item, index) in recommendedJobs" :key="item.job.id" class="job-item">
-                  <div class="score-tag">匹配度 {{ item.score }}%</div>
+                  <div class="score-tag" :class="scoreClass(item.score)">匹配度 {{ item.score }}%</div>
                   <h3 class="job-title">{{ item.job.title }}</h3>
                   <div class="job-meta">
                     <span>{{ item.job.company }}</span>
@@ -97,14 +96,9 @@
                     </el-tag>
                   </div>
                   <div class="action-area">
-                    <el-button 
-                      type="primary" 
-                      link 
-                      :loading="item.loading" 
-                      @click="handleSmartApply(item)"
-                    >
-                      {{ item.loading ? 'AI处理中...' : '一键智能投递' }}
-                    </el-button>
+                    <el-button link type="primary" size="small" @click="openRadar(item)">能力对比</el-button>
+                    <el-button link type="primary" size="small" @click="openApplyDialog(item)">投递简历</el-button>
+                    <el-button link type="info" size="small" @click="showJobDetail(item.job)">查看详情</el-button>
                   </div>
                   <el-divider />
                 </div>
@@ -114,11 +108,44 @@
         </el-card>
       </el-col>
     </el-row>
+    <!-- 投递简历弹窗 -->
+    <el-dialog v-model="applyVisible" title="选择简历投递" width="420px" destroy-on-close>
+      <p style="margin:0 0 12px;color:#606266">将投递至: <b>{{ applyTarget?.job?.title || applyTarget?.title }}</b></p>
+      <el-radio-group v-model="selectedResumeId" v-if="resumeList.length">
+        <div v-for="r in resumeList" :key="r.id" style="margin-bottom:10px">
+          <el-radio :value="r.id">
+            {{ r.title || r.name }}
+            <el-tag v-if="r.is_default" size="small" type="success" effect="plain" style="margin-left:6px">默认</el-tag>
+          </el-radio>
+        </div>
+      </el-radio-group>
+      <el-empty v-else description="暂无简历，请先创建" :image-size="60" />
+      <template #footer>
+        <el-button @click="applyVisible = false">取消</el-button>
+        <el-button type="primary" :loading="applyLoading" :disabled="!selectedResumeId" @click="confirmApply">确认投递</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 岗位详情弹窗 -->
+    <el-dialog v-model="jobDetailVisible" :title="previewJob?.title" width="500px" destroy-on-close>
+      <el-descriptions v-if="previewJob" :column="1" border size="small">
+        <el-descriptions-item label="公司">{{ previewJob.company }}</el-descriptions-item>
+        <el-descriptions-item label="薪资">{{ previewJob.salary || '面议' }}</el-descriptions-item>
+        <el-descriptions-item label="地点">{{ previewJob.location || '不限' }}</el-descriptions-item>
+        <el-descriptions-item label="要求技能">{{ (previewJob.required_skills || []).join(', ') }}</el-descriptions-item>
+        <el-descriptions-item label="描述">{{ previewJob.description }}</el-descriptions-item>
+      </el-descriptions>
+    </el-dialog>
+
+    <!-- 雷达图弹窗 -->
+    <el-dialog v-model="radarVisible" title="能力对比分析" width="550px" destroy-on-close>
+      <div ref="radarChart" style="width:100%;height:400px"></div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
   Search, 
@@ -135,8 +162,10 @@ import { useUserStore } from '../../../store/user'
 import { useResumeStore } from '../../../store/resume' // 需要创建这个文件
 
 // 2. 引入 API (请确保路径正确)
-import { smartApply, getRecommendedJobs } from '../../../api/user'
-import { getResumeListAPI} from '../../../api/resume'
+import { submitRecommend, pollRecommend } from '../../../api/user'
+import { getResumeListAPI } from '../../../api/resume'
+import request from '../../../utils/request'
+import * as echarts from 'echarts'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -164,156 +193,179 @@ const goToTaskHall = () => router.push('/dashboard/tasks')
 const goToMyApplications = () => router.push('/dashboard/applications')
 const goToResume = () => router.push('/dashboard/resume')
 
-// --- 核心逻辑：获取推荐列表 ---
+// --- 核心逻辑：异步推荐（submit + poll） ---
+const pollingTimer = ref(null)
+
 const fetchRecommendations = async () => {
   pageLoading.value = true
+  recommendedJobs.value = []
   try {
-    // 1. 检查登录状态
-    if (!currentUserId.value) {
-      ElMessage.warning('请先登录')
-      router.push('/login')
-      return
-    }
+    // Step 1: 提交异步任务
+    const taskRes = await submitRecommend()
+    const taskId = taskRes.task_id || taskRes.taskId
+    if (!taskId) { ElMessage.error('提交推荐失败'); pageLoading.value = false; return }
 
-    // 2. 调用 API
-    const res = await getRecommendedJobs(currentUserId.value)
-    
-    // 3. 处理数据
-    if (res && res.data) {
-      recommendedJobs.value = res.data.map(job => ({
-        ...job,
-        loading: false // 为每个职位项注入 loading 状态
-      }))
-    } else {
-      recommendedJobs.value = []
+    // Step 2: 轮询结果
+    let attempts = 0
+    const poll = async () => {
+      const result = await pollRecommend(taskId)
+      attempts++
+      if (result.status === 'SUCCESS') {
+        const recs = result.data?.recommendations || []
+        recommendedJobs.value = recs.map(r => ({
+          job: {
+            id: r.job_id, title: r.title, company: r.company,
+            salary: r.salary, location: r.location,
+            description: r.description, required_skills: r.required_skills,
+          },
+          score: r.score,
+          matched_skills: r.matched_skills,
+          required_skills: r.required_skills,
+          loading: false,
+        }))
+        pageLoading.value = false
+        isRefreshing.value = false
+        ElMessage.success(`AI 推荐完成，共 ${recs.length} 个职位`)
+      } else if (result.status === 'FAILURE') {
+        ElMessage.error('推荐计算失败')
+        pageLoading.value = false
+      } else if (attempts < 30) {
+        pollingTimer.value = setTimeout(poll, 1500)
+      } else {
+        ElMessage.warning('推荐计算超时，请稍后刷新')
+        pageLoading.value = false
+      }
     }
+    poll()
   } catch (error) {
-    console.error("获取推荐列表失败:", error)
-    ElMessage.error('加载推荐职位失败')
-  } finally {
+    console.error('推荐请求失败:', error)
+    ElMessage.error('推荐服务暂不可用')
     pageLoading.value = false
-    isRefreshing.value = false
   }
+}
+
+// 三色打分 (PPT: ≥90绿, 70-89橙, <70红)
+const scoreClass = (s) => s >= 90 ? 'score-high' : s >= 70 ? 'score-mid' : 'score-low'
+
+// 雷达图
+const radarVisible = ref(false)
+const radarChart = ref(null)
+let radarInstance = null
+
+const jobDetailVisible = ref(false)
+const previewJob = ref(null)
+const showJobDetail = (job) => { previewJob.value = job; jobDetailVisible.value = true }
+
+const dimMap = {
+  '后端开发': ['python','java','go','fastapi','django','flask','spring','springboot','gin'],
+  '前端基础': ['react','vue','typescript','javascript','next.js','tailwindcss','vite','html','css','node.js'],
+  '数据库':   ['mysql','redis','postgresql','mongodb','elasticsearch','sql','milvus','chroma'],
+  '中间件':   ['docker','k8s','kubernetes','nginx','kafka','grpc','git','linux','ci/cd'],
+  '算法/AI':  ['pytorch','tensorflow','langchain','rag','llm','nlp','深度学习','机器学习','prompt','agent','lora'],
+}
+
+const scoreDim = (skills, dim) => {
+  const kw = dimMap[dim] || []
+  const hits = (skills || []).filter(s => kw.some(k => s.toLowerCase().includes(k))).length
+  return Math.min(100, hits * 25 + 25)
+}
+
+const buildRadar = (job) => {
+  const dims = Object.keys(dimMap)
+  const userScores = dims.map(d => scoreDim(job.matched_skills, d))
+  const jobScores = dims.map(d => scoreDim(job.required_skills || [], d))
+  return {
+    tooltip: {},
+    legend: { data: ['你的能力', '职位要求'], bottom: 0 },
+    radar: {
+      radius: '60%',
+      indicator: dims.map(d => ({ name: d, max: 100 })),
+    },
+    series: [{
+      type: 'radar',
+      data: [
+        { value: userScores, name: '你的能力', areaStyle: { color: 'rgba(64,158,255,0.25)' }, lineStyle: { color: '#409EFF' }, itemStyle: { color: '#409EFF' } },
+        { value: jobScores, name: '职位要求', areaStyle: { color: 'rgba(230,162,60,0.25)' }, lineStyle: { color: '#E6A23C' }, itemStyle: { color: '#E6A23C' } },
+      ],
+    }],
+  }
+}
+
+const openRadar = (job) => {
+  radarVisible.value = true
+  setTimeout(() => {
+    if (radarChart.value) {
+      radarInstance?.dispose()
+      radarInstance = echarts.init(radarChart.value)
+      radarInstance.setOption(buildRadar(job))
+    }
+  }, 150)
 }
 
 const onRefresh = () => {
   fetchRecommendations()
 }
 
-// --- 核心逻辑：智能投递 ---
-// 状态变量
-// --- 核心逻辑：智能投递 ---
-// 状态变量
-const showResumeDialog = ref(false);
-const confirmLoading = ref(false);
-const resumeList = ref([]);
-const selectedResumeId = ref(null);
-let pendingJobId = null;
-let pendingJobTitle = ref('');
+// --- 单个投递（带简历选择）---
+const applyVisible = ref(false)
+const applyLoading = ref(false)
+const applyTarget = ref(null)
+const resumeList = ref([])
+const selectedResumeId = ref(null)
 
-// 1. 点击“一键投递”按钮触发的函数
-const handleSmartApply = async (job) => {
+const openApplyDialog = async (item) => {
+  applyTarget.value = item
+  selectedResumeId.value = null
+  applyVisible.value = true
   try {
-    // 第一步：获取简历列表
-    const res = await getResumeListAPI();
-    resumeList.value = res || [];
+    const res = await getResumeListAPI()
+    const data = res.data || res
+    resumeList.value = data || []
+    const dft = resumeList.value.find(r => r.is_default)
+    if (dft) selectedResumeId.value = dft.id
+    else if (resumeList.value.length === 1) selectedResumeId.value = resumeList.value[0].id
+  } catch { ElMessage.error('获取简历列表失败') }
+}
 
-    // 第二步：根据简历数量决定逻辑
-    if (resumeList.value.length === 0) {
-      ElMessage.warning('请先去创建您的简历');
-      return;
-    }
+const confirmApply = async () => {
+  applyLoading.value = true
+  try {
+    const jobId = applyTarget.value?.job?.id || applyTarget.value?.job_id
+    await request.post('/user/smart-deliver', { job_id: jobId, mode: 'auto' })
+    ElMessage.success('投递成功')
+    applyVisible.value = false
+  } catch (e) {
+    const detail = e?.response?.data?.detail
+    ElMessage.warning(typeof detail === 'string' ? detail : '投递失败')
+  } finally { applyLoading.value = false }
+}
 
-    // 第三步：暂存职位信息 (注意这里取值的变化！！！)
-    // 原代码可能是 job.id，现在是 job.job.id
-    pendingJobId = job.job.id;
-    pendingJobTitle.value = job.job.title;
+// --- Agent 一键智能投递 ---
+const agentLoading = ref(false)
 
-    if (resumeList.value.length === 1) {
-      // 只有一份简历：直接投递
-      selectedResumeId.value = resumeList.value[0].id;
-      // 原代码可能是 job.description，现在是 job.job.description
-      executeApply(job.job.job_id, resumeList.value[0].id, job.job.description);
+const runAgentAutoApply = async () => {
+  agentLoading.value = true
+  try {
+    const res = await request.post('/user/agent/apply', { mode: 'auto', threshold: 60 })
+    const data = res.data || res
+    if (data.success) {
+      ElMessage.success(data.message || `已投递 ${data.applied?.length || 0} 个岗位`)
     } else {
-      // 多份简历：弹窗选择
-      showResumeDialog.value = true;
+      ElMessage.warning(data.message || '无匹配岗位')
     }
-  } catch (error) {
-    console.error("获取简历失败:", error);
-    ElMessage.error("初始化投递失败");
-  }
-};
+  } catch { ElMessage.error('智能投递失败') }
+  finally { agentLoading.value = false }
+}
 
-// 2. 弹窗确认按钮
-const confirmSelection = () => {
-  if (!selectedResumeId.value) {
-    ElMessage.warning("请选择一份简历");
-    return;
-  }
-  // 注意：这里传参也要对应上
-  executeApply(pendingJobId, selectedResumeId.value, pendingJobTitle.value);
-};
-
-// 3. 真正执行投递的函数
-const executeApply = async (jobId, resumeId, jobDesc) => {
-  confirmLoading.value = true;
-  try {
-    await smartApply({
-      user_id: currentUserId.value,
-      job_id: jobId,
-      job_description: jobDesc, // 确保这里传的是字符串
-      resume_id: resumeId
-    });
-
-    ElMessage.success('投递成功！AI正在为您生成求职信');
-    showResumeDialog.value = false;
-  } catch (error) {
-    ElMessage.error('投递失败，请重试');
-  } finally {
-    confirmLoading.value = false;
-  }
-};
-
-// const handleSmartApply = async (jobItem) => {
-//   jobItem.loading = true
-
-//   // 1. 获取简历 ID (从 resume Store 获取)
-//   // 请根据你 resumeStore 的实际字段名调整 (例如可能是 activeResumeId, selectedResumeId 等)
-//   const resumeId = resumeStore.currentResumeId 
-
-//   if (!resumeId) {
-//     ElMessage.warning('请先选择一份简历')
-//     jobItem.loading = false
-//     return
-//   }
-
-//   try {
-//     // 2. 调用 API (传入 user_id 和 resume_id)
-//     const res = await smartApply({
-//       user_id: currentUserId.value,
-//       job_id: jobItem.job.id,
-//       resume_id: resumeId, // 关键参数
-//       job_description: jobItem.job.description || ""
-//     })
-
-//     // 3. 处理结果
-//     if (res.success) {
-//       ElMessage.success('投递成功！')
-//       // 这里可以处理返回的 cover_letter
-//     } else {
-//       ElMessage.error(res.message || '投递失败')
-//     }
-//   } catch (error) {
-//     console.error(error)
-//     ElMessage.error('系统错误')
-//   } finally {
-//     jobItem.loading = false
-//   }
-//}
 
 // --- 初始化 ---
 onMounted(() => {
   fetchRecommendations()
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(pollingTimer.value)
+  radarInstance?.dispose()
 })
 </script>
 
@@ -445,13 +497,15 @@ onMounted(() => {
   position: absolute;
   top: 0;
   right: 0;
-  background-color: #67C23A;
   color: white;
   font-size: 12px;
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: bold;
 }
+.score-high { background-color: #67C23A; }
+.score-mid  { background-color: #E6A23C; }
+.score-low  { background-color: #F56C6C; }
 .job-title {
   font-size: 16px;
   font-weight: bold;

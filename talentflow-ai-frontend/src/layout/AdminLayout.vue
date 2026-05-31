@@ -47,10 +47,9 @@
               管理员 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
-              <el-menu>
-                <!-- 给 menu-item 加上 index="logout" -->
-                <el-menu-item index="logout">退出登录</el-menu-item>
-              </el-menu>
+              <el-dropdown-menu>
+                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
             </template>
           </el-dropdown>
         </div>

@@ -114,3 +114,134 @@ async def parse_job_full_info(text: str) -> dict:
     except Exception as e:
         logger.error(f"❌ LLM 全字段解析失败: {e}")
         return {}
+    
+async def parse_resume_fields(text: str) -> dict:
+    """
+    简历全字段解析：从简历文本中提取结构化信息，用于前端自动填表。
+    对标 parse_job_full_info，但针对简历场景设计输出字段。
+    """
+    llm = get_llm()
+    if not llm:
+        return {}
+
+    template = """
+你是一位资深的招聘专员。请从下方简历文本中提取关键信息，填入对应字段。
+
+提取策略（请尽力推断，不要轻易放弃）：
+- name: 简历开头或个人信息区的姓名。
+- email: 包含 @ 的邮箱地址。
+- phone: 11位手机号或座机号。
+- title: 最近一份工作的职位名称（如"高级前端工程师"）；若无明确工作经历，则取简历标题或自我描述中暗示的职位方向。
+- education: 最高学历（如"本科"、"硕士"、"博士"），可从学校信息或学历描述中推断。
+- experience: 工作年限。
+    优先：从工作经历的时间段计算总年限（如 2018-2023 → 5年）。
+    其次：从简历中的自我描述提取（如"拥有8年开发经验"）。
+    实在无法判断才留空。
+- skills: 技术栈关键词列表，使用通用标准写法（Python 而非 py，React 而非 reactjs）。
+- summary: 个人优势或自我评价的1-2句概括。
+- work_experience: 工作经历部分的摘要，包含公司、职位、时间段。
+- project_experience: 项目经验部分的摘要。
+
+规则：
+1. 必须返回严格的 JSON 格式，只输出 JSON，不要任何额外文字。
+2. 只有经过充分尝试仍无法确定时，才填入空字符串 "" 或空列表 []。
+
+简历文本:
+{text}
+
+JSON 格式:
+{{
+    "name": "...",
+    "email": "...",
+    "phone": "...",
+    "title": "...",
+    "education": "...",
+    "experience": "...",
+    "skills": ["...", "..."],
+    "summary": "...",
+    "work_experience": "...",
+    "project_experience": "..."
+}}
+"""
+
+    try:
+        input_text = text[:4000]
+        response = await llm.ainvoke(template.format(text=input_text))
+        content = response.content.strip()
+
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+
+        return json.loads(content)
+    except Exception as e:
+        logger.warning(f"⚠️ LLM 简历字段解析失败: {e}")
+        return {}
+
+
+async def parse_multiple_jobs_info(text: str) -> list:
+    """
+    批量解析：从包含多个岗位的文档中提取出岗位列表
+    """
+    llm = get_llm()
+    if not llm:
+        return []
+        
+    template = """
+    你是一个专业的招聘数据提取助手。请从下方的长文本中提取出【所有】提及的职位信息。
+    文档中可能包含多个不同的职位。请将它们全部识别出来，并以严格的 JSON 数组 (Array) 格式返回。
+
+    要求：
+    1. 必须返回严格的 JSON 数组格式，每个元素是一个独立职位的 JSON 对象。
+    2. 薪资请提取范围（如 15k-25k），没有则填"面议"。
+    3. 如果某项未提及，请填入"不限"或空列表。
+
+    文本内容:
+    {text}
+
+    请严格输出以下格式的 JSON 数组，不要包含任何其他说明文字:
+    [
+        {{
+            "title": "职位名称1",
+            "company": "公司名称",
+            "salary": "薪资范围",
+            "location": "工作地点",
+            "experience_requirement": "经验要求",
+            "education_requirement": "学历要求",
+            "required_skills": ["技能A", "技能B"],
+            "description": "职位职责和要求摘要"
+        }},
+        {{
+            "title": "职位名称2",
+            ...
+        }}
+    ]
+    """
+    
+    try:
+        # 批量文档通常比较长，这里放宽截断限制到 8000 字符（约 4000 个汉字）
+        input_text = text[:8000]
+        response = await llm.ainvoke(template.format(text=input_text))
+        content = response.content.strip()
+        
+        # 清洗 Markdown 标记
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+            
+        parsed_data = json.loads(content)
+        
+        # 兜底容错处理
+        if isinstance(parsed_data, list):
+            return parsed_data
+        elif isinstance(parsed_data, dict) and "jobs" in parsed_data:
+            return parsed_data["jobs"]
+        else:
+            return [parsed_data] if isinstance(parsed_data, dict) else []
+            
+    except Exception as e:
+        from app.core.logger import logger
+        logger.error(f"❌ LLM 批量解析职位失败: {e}")
+        return []

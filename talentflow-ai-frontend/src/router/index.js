@@ -53,7 +53,13 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: LoginView,
-    meta: { isPublic: true } // 标记为公共页面
+    meta: { isPublic: true }
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: () => import('../views/RegisterView.vue'),
+    meta: { isPublic: true }
   },
 
   // --- 用户端路由 ---
@@ -73,6 +79,7 @@ const routes = [
           { path: 'jobs', name: 'JobCockpit', component: JobCockpit },
           { path: 'tasks/:id', name: 'TaskDetail', component: TaskDetail },
           { path: 'resume', name: 'resumes', component: ResumeManager },
+          { path: 'applications', name: 'MyApps', component: () => import('../views/user/dashboard/Applications.vue') },
         ]
       },
       // 其他用户页面 (如果不加 meta，默认为公开)

@@ -27,18 +27,19 @@
           </div>
 
           <div class="card-footer">
-            <el-button 
-              v-if="resume.id !== currentResumeId"
-              type="success" 
-              size="small" 
-              @click="selectResume(resume)"
-            >
-              选中
-            </el-button>
-            <el-tag v-else type="success" size="small">当前选中</el-tag>
-
-            <el-button size="small" @click="handleEdit(resume)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(resume.id)">删除</el-button>
+            <el-button link type="primary" size="small" @click="handleEdit(resume)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="handleDelete(resume.id)">删除</el-button>
+            <div class="footer-right">
+              <el-button v-if="!resume.is_default" link type="warning" size="small" @click="handleSetDefault(resume.id)">设为默认</el-button>
+              <el-button
+                v-if="resume.id !== currentResumeId"
+                size="small"
+                type="primary"
+                plain
+                @click="selectResume(resume)"
+              >使用此简历</el-button>
+              <el-tag v-else type="success" size="small" effect="dark">使用中</el-tag>
+            </div>
           </div>
         </el-card>
       </el-col>
@@ -52,7 +53,26 @@
     width="600px"
     >
     <el-form :model="form" label-position="top">
-        
+
+        <!-- 上传简历文件（仅新建） -->
+        <div v-if="!isEdit" style="margin-bottom:16px">
+          <el-upload
+            class="upload-demo"
+            drag
+            :auto-upload="true"
+            :show-file-list="true"
+            :limit="1"
+            accept=".pdf,.doc,.docx,.txt"
+            :http-request="handleUploadParse"
+            :on-remove="() => uploadFile = null"
+          >
+            <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+            <div class="el-upload__text">拖拽简历文件 或 <em>点击上传</em></div>
+            <template #tip><div class="el-upload__tip">支持 PDF/DOCX/TXT，上传后自动解析并填充下方表单</div></template>
+          </el-upload>
+          <el-divider />
+        </div>
+
         <!-- 1. 基础信息 -->
         <el-divider content-position="left">基础信息</el-divider>
         <el-row :gutter="20">
@@ -134,13 +154,15 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useResumeStore } from '../../../store/resume'
-import { 
-  getResumeListAPI, 
-  createResumeAPI, 
-  updateResumeAPI, 
-  deleteResumeAPI 
-} from '../../../api/resume' // 请根据实际路径调整
+import {
+  getResumeListAPI,
+  createResumeAPI,
+  parseResumeFileAPI,
+  deleteResumeAPI,
+  setDefaultResumeAPI
+} from '../../../api/resume'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 
 // --- Store & State ---
 const resumeStore = useResumeStore()
@@ -150,6 +172,7 @@ const resumeList = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const submitLoading = ref(false)
+const uploadFile = ref(null)
 
 // 表单数据结构 (需对应数据库字段)
 const defaultForm = {
@@ -195,32 +218,67 @@ const handleEdit = (resume) => {
   dialogVisible.value = true
 }
 
-// 提交保存
-const submitForm = () => {
-  submitLoading.value = true
-  
-  const apiCall = isEdit.value 
-    ? updateResumeAPI(form.value.id, form.value)
-    : createResumeAPI(form.value)
+// 文件上传解析
+const handleUploadParse = async (options) => {
+  const { file, onSuccess, onError } = options
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    const res = await parseResumeFileAPI(fd)
+    const data = res.data || res
+    Object.assign(form.value, {
+      title: data.title || '', name: data.name || '', phone: data.phone || '',
+      email: data.email || '', education: data.education || '', experience: data.experience || '',
+      skills: Array.isArray(data.skills) ? data.skills.join(', ') : (data.skills || ''),
+      summary: data.summary || '', work_experience: data.work_experience || '',
+      project_experience: data.project_experience || ''
+    })
+    ElMessage.success('解析完成，请核对后提交')
+    onSuccess(res)
+  } catch { ElMessage.error('解析失败'); onError() }
+}
 
-  apiCall
-    .then(() => {
-      ElMessage.success('保存成功')
-      dialogVisible.value = false
-      fetchResumes()
-    })
-    .catch(() => {
-      ElMessage.error('保存失败，请检查网络')
-    })
-    .finally(() => {
-      submitLoading.value = false
-    })
+// 提交保存
+const submitForm = async () => {
+  submitLoading.value = true
+  try {
+    const fd = new FormData()
+    fd.append('name', form.value.name || '')
+    fd.append('title', form.value.title || '')
+    fd.append('phone', form.value.phone || '')
+    fd.append('email', form.value.email || '')
+    fd.append('education', form.value.education || '')
+    fd.append('experience', form.value.experience || '')
+    fd.append('skills', JSON.stringify(
+      typeof form.value.skills === 'string'
+        ? form.value.skills.split(/[,，]/).map(s => s.trim()).filter(s => s)
+        : (form.value.skills || [])
+    ))
+    fd.append('summary', form.value.summary || '')
+    fd.append('work_experience', form.value.work_experience || '')
+    fd.append('project_experience', form.value.project_experience || '')
+
+    await createResumeAPI(fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    fetchResumes()
+  } catch { ElMessage.error('保存失败') }
+  finally { submitLoading.value = false }
 }
 
 // 选中简历
 const selectResume = (resume) => {
-  resumeStore.setCurrentResume(resume.id)
-  ElMessage.success(`已选中 "${resume.title}" 用于投递`)
+  resumeStore.switchResume(resume.id)
+  ElMessage.success(`已切换为 "${resume.title}"`)
+}
+
+// 设为默认
+const handleSetDefault = async (id) => {
+  try {
+    await setDefaultResumeAPI(id)
+    ElMessage.success('已设为默认简历')
+    fetchResumes()
+  } catch { ElMessage.error('操作失败') }
 }
 
 // 删除
@@ -308,9 +366,15 @@ onMounted(() => {
 .card-footer {
   margin-top: 20px;
   padding-top: 15px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid #ebeef5;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 4px;
+}
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

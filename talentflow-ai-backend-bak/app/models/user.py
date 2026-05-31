@@ -29,5 +29,4 @@ class User(Base):
     @property
     def role_label(self) -> str:
         return "管理员" if self.role == 1 else "求职者"
-    tasks = relationship("Task", back_populates="owner")
-    
+

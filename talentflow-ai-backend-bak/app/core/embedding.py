@@ -1,22 +1,27 @@
 #负责将文本转化为向量
 # app/core/embedding.py
 import os
-from app.core.logger import logger
-from langchain_huggingface import HuggingFaceEmbeddings
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["HF_UPDATE_DICT"] = "0"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+from app.core.config import settings
+from app.core.logger import logger
+from langchain_huggingface import HuggingFaceEmbeddings
+
 _embedding_instance = None
+
+DEFAULT_EMBEDDING_PATH = r"D:\py_lesson\RAG-Customer-Service\smart-cs-backend\app\rag\model\text2vec-base-chinese"
+
+
 def get_embedding_function():
     global _embedding_instance
     if _embedding_instance is not None:
         return _embedding_instance
-    
-    local_model_path = r"D:\py_lesson\RAG-Customer-Service\smart-cs-backend\app\rag\model\text2vec-base-chinese"
 
-    
-    logger.info(f"⏳ [初始化] 正在加载本地 Embedding 模型: {local_model_path}")
+    model_path = settings.EMBEDDING_MODEL_PATH or DEFAULT_EMBEDDING_PATH
+    logger.info(f"⏳ [初始化] 正在加载本地 Embedding 模型: {model_path}")
     
     # 初始化配置
     model_kwargs = {
@@ -32,7 +37,7 @@ def get_embedding_function():
     
     # 3. 实例化模型并返回
     embeddings = HuggingFaceEmbeddings(
-        model_name=local_model_path,
+        model_name=model_path,
         model_kwargs=model_kwargs,
         encode_kwargs=encode_kwargs
     )

@@ -1,6 +1,5 @@
 import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey
-from sqlalchemy.orm import relationship
 from app.models.base import Base
 class Task(Base):
     """
@@ -19,11 +18,11 @@ class Task(Base):
     difficulty = Column(String(20), nullable=True, comment="难度")
     skills = Column(JSON, nullable=True, comment="所需技能列表")
     
-    # 外键关联到 users 表
-    taken_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="接单人ID")
+    # 外键关联
+    mentor_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="发布导师ID")
+    taken_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="接单学生ID")
     status = Column(Integer, default=0, nullable=False, comment="状态: 0待审核, 1进行中, 2暂停, 3完成")
-    
+
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    
-    # 建立与用户的关联对象
-    owner = relationship("User", back_populates="tasks")
+
+    # owner 关系已移除（未被使用且导致循环引用）

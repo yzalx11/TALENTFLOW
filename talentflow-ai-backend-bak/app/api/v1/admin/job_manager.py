@@ -16,8 +16,9 @@ from app.core.logger import logger
 
 from app.core.vector_store import add_documents_to_faiss
 
-from app.core.llm import parse_job_full_info 
+from app.core.llm import parse_job_full_info ,parse_multiple_jobs_info
 from app.utils.file_parser import save_upload_file_to_disk, extract_text_from_local_file, split_text_pure_python
+from app.api.v1.admin.skill_manager import standardize_skill_list
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin-Jobs"])
 
@@ -74,12 +75,12 @@ async def create_job(
         if required_skills:
             try:
                 parsed_skills = json.loads(required_skills)
-                # 确保解析后是字符串数组（去空、去重）
                 parsed_skills = [
-                    skill.strip() 
-                    for skill in parsed_skills 
+                    skill.strip()
+                    for skill in parsed_skills
                     if isinstance(skill, str) and skill.strip()
                 ]
+                parsed_skills = standardize_skill_list(parsed_skills, db)
             except Exception as e:
                 logger.error(f"解析技能列表失败: {e}, 原始值: {required_skills}")
                 parsed_skills = []
@@ -187,7 +188,8 @@ async def update_job(
     job.description = description
     
     try:
-        job.required_skills = json.loads(required_skills)
+        raw_skills = json.loads(required_skills)
+        job.required_skills = standardize_skill_list(raw_skills, db)
     except:
         pass
 
@@ -222,3 +224,78 @@ def delete_job(
     db.delete(job)
     db.commit()
     return {"message": f"职位 (ID: {id}, JobID: {job.job_id}) 已成功删除"}
+
+
+@router.post("/jobs/batch")
+async def batch_import_jobs(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    【批量导入】上传包含多个岗位的长文档，AI 自动切分、解析并全部入库 (MySQL + FAISS)
+    """
+    logger.info(f"📥 正在批量处理职位文档: {file.filename}")
+    
+    # 1. 保存文件并提取所有文字
+    file_path = save_upload_file_to_disk(file)
+    if not file_path:
+        raise HTTPException(status_code=500, detail="文件保存失败")
+        
+    full_text = extract_text_from_local_file(file_path)
+    
+    # 2. 召唤 LLM 进行批量切割提取
+    jobs_data = await parse_multiple_jobs_info(full_text)
+    
+    if not jobs_data or not isinstance(jobs_data, list):
+        raise HTTPException(status_code=400, detail="AI 未能从文档中成功提取到职位结构，请检查文档内容")
+
+    # 3. 遍历提取到的列表，双轨入库 (MySQL 循环写，FAISS 攒起来批量写)
+    success_count = 0
+    all_chunks = []
+    all_metadatas = []
+    
+    for job_info in jobs_data:
+        # 为每个职位生成独立ID
+        job_id = f"JOB-{uuid.uuid4().hex[:8].upper()}"
+        
+        # [A] 存入 MySQL
+        new_job = JobPosition(
+            job_id=job_id,
+            title=job_info.get("title") or "未知职位",
+            company=job_info.get("company") or "未知公司",
+            salary=job_info.get("salary") or "面议",
+            location=job_info.get("location") or "不限",
+            experience_requirement=job_info.get("experience_requirement") or "不限",
+            education_requirement=job_info.get("education_requirement") or "不限",
+            description=job_info.get("description") or "",
+            required_skills=job_info.get("required_skills") or [],
+            is_active=True
+        )
+        db.add(new_job)
+        
+        # [B] 切片准备存入 FAISS
+        desc_text = job_info.get("description", "")
+        if not desc_text:
+            desc_text = f"职位：{new_job.title}，技能：{', '.join(new_job.required_skills)}"
+            
+        chunks = split_text_pure_python(desc_text, chunk_size=250, chunk_overlap=30)
+        metadatas = [{"job_id": job_id, "company": new_job.company, "source_file": file.filename} for _ in chunks]
+        
+        all_chunks.extend(chunks)
+        all_metadatas.extend(metadatas)
+        success_count += 1
+        
+    # 提交数据库事务
+    db.commit()
+    
+    # 批量将所有切片丢进向量库
+    if all_chunks:
+        logger.info(f"🧠 正在将批量解析出的 {len(all_chunks)} 个 Chunk 存入 FAISS...")
+        add_documents_to_faiss(chunks=all_chunks, metadatas=all_metadatas)
+        
+    return {
+        "success": True,
+        "message": f"批量导入完成",
+        "count": success_count
+    }

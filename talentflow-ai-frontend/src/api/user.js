@@ -1,12 +1,17 @@
 import request from '../utils/request'
 
-// 1. 获取实战任务列表
-// 对应后端：GET /api/v1/user/tasks/
-export function getTaskList(params) {
+// 1. 获取任务列表（任务广场）
+export function getTaskList(params = {}) {
   return request({
-    url: '/user/tasks/',
+    url: '/user/tasks',
     method: 'get',
-    params // 支持传递 category, status 等查询参数
+    params: {
+      skip: params.skip || 0,
+      limit: params.limit || 10,
+      keyword: params.keyword || '',
+      category: params.category || '',
+      sort_by: params.sort_by || 'created_at',
+    }
   })
 }
 
@@ -19,35 +24,35 @@ export function getTaskDetail(taskId) {
   })
 }
 
-// 3. 立即接单 (提交任务申请)
-// 对应后端：POST /api/v1/user/tasks/{task_id}/apply (假设的接单接口)
+// 3. 立即接单
 export function applyTask(taskId) {
   return request({
     url: `/user/tasks/${taskId}/apply`,
     method: 'post',
-    // 不需要传 data，后端从 Token 里拿用户信息
   })
 }
 
 
-// 4. 获取推荐职位列表 (RAG 推荐)
-export function getRecommendedJobs(userId, topK = 5) {
+// 4. AI 推荐（异步）— 提交任务
+export function submitRecommend() {
   return request({
-    url: `/user/recommend1/${userId}`,
-    method: 'get',
-    params: {
-      top_k: topK
-    },
-    // 重点：在这里增加 timeout 配置
-    timeout: 60000, // 设置为 60秒，给后端足够的时间计算
-    // 如果你的 request 实例不支持单独配置 timeout，请看第二步
-  })
-}
-
-export function smartApply(data) {
-  return request({
-    url: '/user/smart-apply',
+    url: '/user/recommend',
     method: 'post',
-    data: data
+  })
+}
+
+// 5. AI 推荐（异步）— 轮询结果
+export function pollRecommend(taskId) {
+  return request({
+    url: `/user/recommend/${taskId}`,
+    method: 'get',
+  })
+}
+
+// 6. 单岗位智能投递
+export function smartApply(jobId) {
+  return request({
+    url: `/user/jobs/${jobId}/apply`,
+    method: 'post',
   })
 }
