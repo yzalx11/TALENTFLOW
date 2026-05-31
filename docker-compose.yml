@@ -7,7 +7,7 @@ services:
     build:
       context: ./talentflow-ai-backend-bak
       dockerfile: Dockerfile
-    image: ghcr.io/yzalx11/talentflow/backend:latest
+    image: ghcr.io/yzalx11/talentflow-backend:latest
     container_name: talentflow-backend
     ports:
       - "8000:8000"
@@ -34,7 +34,7 @@ services:
     build:
       context: ./talentflow-ai-backend-bak
       dockerfile: Dockerfile.worker
-    image: ghcr.io/yzalx11/talentflow/worker:latest
+    image: ghcr.io/yzalx11/talentflow-worker:latest
     container_name: talentflow-worker
     environment:
       - MYSQL_SERVER=${MYSQL_SERVER:-mysql}
@@ -57,7 +57,7 @@ services:
     build:
       context: ./talentflow-ai-frontend
       dockerfile: Dockerfile
-    image: ghcr.io/yzalx11/talentflow/frontend:latest
+    image: ghcr.io/yzalx11/talentflow-frontend:latest
     container_name: talentflow-frontend
     ports:
       - "80:80"

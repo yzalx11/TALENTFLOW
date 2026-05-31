@@ -4,6 +4,9 @@ on:
   push:
     branches: [master]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -28,7 +31,7 @@ jobs:
           context: ./talentflow-ai-backend-bak
           file: ./talentflow-ai-backend-bak/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}/backend:latest
+          tags: ghcr.io/${{ github.repository_owner }}/talentflow-backend:latest
 
       - name: Build & Push Worker
         uses: docker/build-push-action@v6
@@ -36,7 +39,7 @@ jobs:
           context: ./talentflow-ai-backend-bak
           file: ./talentflow-ai-backend-bak/Dockerfile.worker
           push: true
-          tags: ghcr.io/${{ github.repository }}/worker:latest
+          tags: ghcr.io/${{ github.repository_owner }}/talentflow-worker:latest
 
       - name: Build & Push Frontend
         uses: docker/build-push-action@v6
@@ -44,7 +47,7 @@ jobs:
           context: ./talentflow-ai-frontend
           file: ./talentflow-ai-frontend/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}/frontend:latest
+          tags: ghcr.io/${{ github.repository_owner }}/talentflow-frontend:latest
 
       - name: Deploy to Server
         uses: appleboy/ssh-action@v1
