@@ -8,7 +8,7 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
-from app.core.database import SessionLocal
+from app.core.database import SyncSessionLocal
 from app.core.logger import logger
 from app.models.job_position import JobPosition
 from app.models.resume import Resume
@@ -103,13 +103,23 @@ def compute_recommendations(self, user_id: int):
     import os
     cache = _redis.Redis.from_url(f"{_os.getenv('REDIS_URL', 'redis://127.0.0.1:6379')}/2")
 
-    db = SessionLocal()
+    db = SyncSessionLocal()
     try:
-        resume = db.query(Resume).filter(Resume.user_id == user_id, Resume.is_default == 1).first()
+        # 优先已审核的默认简历
+        resume = db.query(Resume).filter(
+            Resume.user_id == user_id, Resume.is_default == 1, Resume.status == "reviewed"
+        ).first()
         if not resume:
-            resume = db.query(Resume).filter(Resume.user_id == user_id).order_by(Resume.id.desc()).first()
+            resume = db.query(Resume).filter(
+                Resume.user_id == user_id, Resume.status == "reviewed"
+            ).order_by(Resume.id.desc()).first()
         if not resume:
-            return {"error": "未找到简历，请先上传简历", "recommendations": []}
+            # 降级：未审核但已处理
+            resume = db.query(Resume).filter(
+                Resume.user_id == user_id, Resume.status.in_(["processed", "reviewed"])
+            ).order_by(Resume.id.desc()).first()
+        if not resume:
+            return {"error": "未找到已审核的简历，请等待管理员审核", "recommendations": []}
 
         # 检查缓存：简历ID + 岗位最新更新时间 都没变 → 命中
         job_max_ts = db.query(JobPosition.updated_at).filter(JobPosition.is_active == True).order_by(JobPosition.updated_at.desc()).first()

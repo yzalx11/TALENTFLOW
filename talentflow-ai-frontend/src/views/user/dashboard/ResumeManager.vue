@@ -17,7 +17,10 @@
         >
           <div class="card-header">
             <span class="title">{{ resume.title || '未命名简历' }}</span>
-            <el-tag v-if="resume.is_default" type="success" size="small">默认</el-tag>
+            <div>
+              <el-tag :type="statusType(resume.status)" size="small" style="margin-right:4px">{{ statusText(resume.status) }}</el-tag>
+              <el-tag v-if="resume.is_default" type="success" size="small">默认</el-tag>
+            </div>
           </div>
           
           <div class="card-body">
@@ -29,17 +32,11 @@
           <div class="card-footer">
             <el-button link type="primary" size="small" @click="handleEdit(resume)">编辑</el-button>
             <el-button link type="danger" size="small" @click="handleDelete(resume.id)">删除</el-button>
-            <div class="footer-right">
-              <el-button v-if="!resume.is_default" link type="warning" size="small" @click="handleSetDefault(resume.id)">设为默认</el-button>
-              <el-button
-                v-if="resume.id !== currentResumeId"
-                size="small"
-                type="primary"
-                plain
-                @click="selectResume(resume)"
-              >使用此简历</el-button>
+            <div class="footer-right" v-if="resume.status === 'reviewed'">
+              <el-button v-if="resume.id !== currentResumeId" size="small" type="primary" plain @click="selectResume(resume)">使用此简历</el-button>
               <el-tag v-else type="success" size="small" effect="dark">使用中</el-tag>
             </div>
+            <el-tag v-else type="info" size="small">等待审核</el-tag>
           </div>
         </el-card>
       </el-col>
@@ -161,6 +158,7 @@ import {
   deleteResumeAPI,
   setDefaultResumeAPI
 } from '../../../api/resume'
+import request from '../../../utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
@@ -258,7 +256,11 @@ const submitForm = async () => {
     fd.append('work_experience', form.value.work_experience || '')
     fd.append('project_experience', form.value.project_experience || '')
 
-    await createResumeAPI(fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    if (isEdit.value) {
+      await request.put(`/user/resumes/${form.value.id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    } else {
+      await createResumeAPI(fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    }
     ElMessage.success('保存成功')
     dialogVisible.value = false
     fetchResumes()
@@ -267,9 +269,13 @@ const submitForm = async () => {
 }
 
 // 选中简历
-const selectResume = (resume) => {
+const selectResume = async (resume) => {
   resumeStore.switchResume(resume.id)
+  if (!resume.is_default) {
+    await setDefaultResumeAPI(resume.id)
+  }
   ElMessage.success(`已切换为 "${resume.title}"`)
+  fetchResumes()
 }
 
 // 设为默认
@@ -295,6 +301,9 @@ const handleDelete = (id) => {
     }
   })
 }
+
+const statusText = s => ({ pending: '待审核', processed: '待审核', reviewed: '已通过' }[s] || s)
+const statusType = s => ({ pending: 'warning', processed: 'warning', reviewed: 'success' }[s] || 'info')
 
 const formatDate = (dateStr) => {
   if (!dateStr) return ''

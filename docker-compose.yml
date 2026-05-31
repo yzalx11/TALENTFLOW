@@ -86,5 +86,23 @@ services:
       - mysql_data:/var/lib/mysql
     restart: unless-stopped
 
+  # ============ MCP Server ============
+  mcp-server:
+    build:
+      context: ./talentflow-ai-backend-bak
+      dockerfile: Dockerfile
+    image: ghcr.io/yzalx11/talentflow-mcp:latest
+    container_name: talentflow-mcp
+    ports:
+      - "8003:8003"
+    command: python mcp_server/server.py
+    volumes:
+      - ./talentflow-ai-backend-bak/.env:/app/.env:ro
+      - ${MODEL_DIR:-/opt/models}:/app/data/models:ro
+    depends_on:
+      - redis
+      - mysql
+    restart: unless-stopped
+
 volumes:
   mysql_data:

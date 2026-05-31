@@ -236,28 +236,52 @@
     </el-dialog>
 
     <!-- 审核弹窗 -->
-    <el-dialog v-model="reviewVisible" title="审核简历" width="900px" top="3vh" destroy-on-close>
+    <el-dialog v-model="reviewVisible" title="审核简历" width="950px" top="3vh" destroy-on-close @close="reviewResume=null">
       <div v-if="reviewResume" class="review-layout">
         <div class="review-left">
-          <h4 class="section-title">简历原文</h4>
-          <div class="raw-text-box"><pre>{{ reviewResume.raw_text || '无文本内容' }}</pre></div>
+          <h4 class="section-title">简历信息</h4>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="姓名">{{ reviewResume.name }}</el-descriptions-item>
+            <el-descriptions-item label="意向职位">{{ reviewResume.title || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="电话">{{ reviewResume.phone || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="邮箱">{{ reviewResume.email || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="学历">{{ reviewResume.education || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="工作年限">{{ reviewResume.experience || '-' }}</el-descriptions-item>
+          </el-descriptions>
+          <div class="section" v-if="reviewResume.summary">
+            <h4 class="section-title">个人简介</h4>
+            <p class="review-text">{{ reviewResume.summary }}</p>
+          </div>
+          <div class="section" v-if="reviewResume.work_experience">
+            <h4 class="section-title">工作经历</h4>
+            <p class="review-text">{{ reviewResume.work_experience }}</p>
+          </div>
+          <div class="section" v-if="reviewResume.project_experience">
+            <h4 class="section-title">项目经验</h4>
+            <p class="review-text">{{ reviewResume.project_experience }}</p>
+          </div>
+          <div class="section" v-if="reviewResume.raw_text">
+            <h4 class="section-title">原始文本</h4>
+            <div class="raw-text-box"><pre>{{ reviewResume.raw_text }}</pre></div>
+          </div>
         </div>
         <div class="review-right">
-          <h4 class="section-title">AI 提取技能</h4>
+          <h4 class="section-title">标准技能（点击删除）</h4>
           <div class="tags-wrap">
-            <el-tag v-for="sk in reviewSkills" :key="sk.id" closable type="primary" effect="plain" style="margin:2px 4px" @close="removeReviewSkill(sk.id)">{{ sk.standard_name }}</el-tag>
-            <span v-if="!reviewSkills.length" class="text-muted">无技能</span>
+            <el-tag v-for="sk in reviewSkills" :key="sk.id" closable type="primary" effect="plain" style="margin:3px 5px" @close="removeReviewSkill(sk.id)">{{ sk.standard_name || sk }}</el-tag>
+            <el-tag v-if="!reviewSkills.length" type="info">暂无技能</el-tag>
           </div>
           <el-divider />
           <h4 class="section-title">从标准库添加</h4>
-          <el-select v-model="selectedSkillId" filterable remote :remote-method="searchSkills" placeholder="搜索技能" style="width:100%" @change="addReviewSkill">
-            <el-option v-for="sk in allSkills" :key="sk.id" :label="sk.standard_name + ' (' + (sk.category||'') + ')'" :value="sk.id" />
+          <el-select v-model="selectedSkillId" filterable remote :remote-method="searchSkills" placeholder="搜索技能名称" style="width:100%" @change="addReviewSkill" clearable>
+            <el-option v-for="sk in allSkills" :key="sk.id" :label="sk.standard_name + ' (' + (sk.category||'未分类') + ')'" :value="sk.id" />
           </el-select>
         </div>
       </div>
       <template #footer>
         <el-button @click="reviewVisible = false">取消</el-button>
-        <el-button type="primary" :loading="reviewLoading" @click="submitReview">保存审核</el-button>
+        <el-button type="danger" :loading="reviewLoading" @click="submitReview('reject')">驳回</el-button>
+        <el-button type="success" :loading="reviewLoading" @click="submitReview('pass')">通过</el-button>
       </template>
     </el-dialog>
   </div>
@@ -304,8 +328,8 @@ const currentResume = ref(null);
 // (编辑状态已合并到 uploadEditId)
 
 // --- 辅助函数 ---
-const statusLabel = (s) => ({ pending: '待处理', processed: '已提取', reviewed: '已审核', Active: '已激活', Pending: '待审核' }[s] || s)
-const statusTagType = (s) => ({ pending: 'warning', processed: 'info', reviewed: 'success', Active: 'success', Pending: 'warning' }[s] || 'info')
+const statusLabel = (s) => ({ pending: '待审核', processed: '待审核', reviewed: '已通过' }[s] || s)
+const statusTagType = (s) => ({ pending: 'warning', processed: 'warning', reviewed: 'success' }[s] || 'info')
 
 const mapResumeData = (item) => {
   return {
@@ -494,7 +518,10 @@ const openReview = async (row) => {
     const res = await axios.get(`/admin/resumes/${row.id}`)
     const d = res.data || res
     reviewResume.value = d
-    reviewSkills.value = [...(d.standard_skills || d.skills || [])]
+    // 标准化技能：优先 standard_skills，空则降级 skills JSON
+    const std = d.standard_skills || []
+    const fallback = (d.skills || []).map(s => typeof s === 'string' ? { id: s, standard_name: s } : s)
+    reviewSkills.value = std.length ? std.map(s => ({...s})) : fallback
     allSkills.value = d.all_skills || []
     reviewVisible.value = true
   } catch { ElMessage.error('加载失败') }
@@ -512,15 +539,16 @@ const searchSkills = async (q) => {
   const r = await axios.get('/admin/skills', { params: { q, limit: 30 } })
   allSkills.value = r.data || r
 }
-const submitReview = async () => {
+const submitReview = async (action) => {
   reviewLoading.value = true
   try {
+    const ids = reviewSkills.value.map(s => s.id).filter(id => typeof id === 'number')
     await axios.post(`/admin/resumes/${reviewResume.value.id}/review`, {
-      skill_ids: reviewSkills.value.map(s => s.id)
+      skill_ids: ids, action,
     })
-    ElMessage.success('审核完成')
+    ElMessage.success(action === 'pass' ? '审核通过' : '已驳回')
     reviewVisible.value = false; fetchData()
-  } catch { ElMessage.error('审核失败') }
+  } catch { ElMessage.error('审核操作失败') }
   finally { reviewLoading.value = false }
 }
 
@@ -546,10 +574,13 @@ onMounted(() => {
 .mb-4 { margin-bottom: 16px; }
 .upload-demo { width: 100%; }
 :deep(.el-upload-dragger) { width: 100%; padding: 20px; }
-.review-layout { display: flex; gap: 20px; height: 400px; }
-.review-left { flex: 1; overflow: auto; }
-.review-right { flex: 1; overflow: auto; }
-.raw-text-box { background: #fafafa; border: 1px solid #ebeef5; border-radius: 6px; padding: 12px; max-height: 350px; overflow: auto; }
-.raw-text-box pre { white-space: pre-wrap; word-break: break-all; font-size: 13px; color: #606266; margin: 0; }
+.review-layout { display: flex; gap: 24px; height: 500px; }
+.review-left { flex: 1.2; overflow: auto; padding-right: 4px; }
+.review-right { flex: 0.8; overflow: auto; padding-right: 4px; }
+.section { margin-top: 12px; }
+.section-title { font-size: 13px; font-weight: 600; color: #303133; margin: 0 0 8px 0; border-left: 3px solid #409EFF; padding-left: 8px; }
+.review-text { font-size: 13px; color: #606266; line-height: 1.6; margin: 0; }
+.raw-text-box { background: #fafafa; border: 1px solid #ebeef5; border-radius: 6px; padding: 12px; max-height: 200px; overflow: auto; }
+.raw-text-box pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #606266; margin: 0; }
 .tags-wrap { min-height: 30px; }
 </style>

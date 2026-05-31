@@ -10,6 +10,7 @@ export function getTaskList(params = {}) {
       limit: params.limit || 10,
       keyword: params.keyword || '',
       category: params.category || '',
+      difficulty: params.difficulty || '',
       sort_by: params.sort_by || 'created_at',
     }
   })

@@ -8,9 +8,9 @@
           <div style="font-size:12px;color:#909399" v-if="s.row.company">{{ s.row.company }}</div>
         </template>
       </el-table-column>
-      <el-table-column label="类型" width="80">
+      <el-table-column label="类型" width="100">
         <template #default="s">
-          <el-tag :type="s.row.target_type === '岗位' ? 'primary' : 'success'" size="small">{{ s.row.target_type }}</el-tag>
+          <el-tag :type="typeTag(s.row.target_type)" size="small">{{ s.row.target_type }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="resume_title" label="使用简历" width="140" />
@@ -23,6 +23,9 @@
         <template #default="s">{{ s.row.created_at?.slice(0, 16) }}</template>
       </el-table-column>
     </el-table>
+    <div class="pagination-row" v-if="total > 10">
+      <el-pagination background layout="total, prev, pager, next" :total="total" :page-size="10" v-model:current-page="page" @current-change="(p) => fetchApps(p)" />
+    </div>
     <el-empty v-if="!loading && !list.length" description="暂无投递记录" />
   </div>
 </template>
@@ -33,17 +36,24 @@ import request from '../../../utils/request'
 
 const list = ref([])
 const loading = ref(false)
+const total = ref(0)
+const page = ref(1)
 
+const typeTag = t => ({ '智能投递': 'primary', '手动投递': 'info', '任务接单': 'success' }[t] || 'info')
 const statusLabel = s => ({ applied: '已投递', approved: '已通过', rejected: '已驳回' }[s] || s)
 const statusTag = s => ({ applied: 'warning', approved: 'success', rejected: 'danger' }[s] || 'info')
 
-onMounted(async () => {
+const fetchApps = async (p = 1) => {
+  page.value = p
   loading.value = true
   try {
-    const res = await request.get('/user/applications')
-    list.value = res.data || res
+    const res = await request.get('/user/applications', { params: { skip: (p-1)*10, limit: 10 } })
+    const d = res.data || res
+    list.value = d.items || []; total.value = d.total || 0
   } finally { loading.value = false }
-})
+}
+
+onMounted(() => fetchApps())
 </script>
 
 <style scoped>

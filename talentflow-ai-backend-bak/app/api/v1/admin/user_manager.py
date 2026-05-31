@@ -1,106 +1,68 @@
 # app/api/v1/admin/user_manager.py
+"""管理员端 — 用户管理"""
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, or_
 from typing import List, Optional
 
-from app.models.user import User  # 注意这里：统一从 user.py 导入
+from app.models.user import User
 from app.core.database import get_db
-from app.core.security import get_password_hash  
+from app.core.security import get_password_hash
 from app.core.deps import get_current_active_admin
 
-# from app.schemas.user_schema import UserRead 
+router = APIRouter(prefix="/api/v1/admin", tags=["Admin-Users"])
 
-router = APIRouter(prefix="/api/v1/admin", tags=["Admin-User-Manager"])
 
-@router.get("/users")
-def read_users(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_admin),
-    skip: int = 0,
-    limit: int = 100,
-    keyword: Optional[str] = Query(None, description="搜索用户名或姓名")
+# ---- 用户列表 ----
+@router.get("/users", response_model=List[dict])
+async def list_users(
+    skip: int = 0, limit: int = 100,
+    keyword: Optional[str] = Query(None), role: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_active_admin), db: AsyncSession = Depends(get_db),
 ):
-    """
-    管理员接口：获取用户列表，支持分页和关键字模糊搜索 (SQLAlchemy 版本)
-    """
-    query = db.query(User)
-    
-    if keyword:
-        query = query.filter(
-            or_(
-                User.username.like(f"%{keyword}%"),
-                User.full_name.like(f"%{keyword}%")
-            )
-        )
-        
-    # 分页并执行查询
-    users = query.offset(skip).limit(limit).all()
-    return users
+    conditions = []
+    if keyword: conditions.append(or_(User.username.like(f"%{keyword}%"), User.full_name.like(f"%{keyword}%")))
+    if role is not None: conditions.append(User.role == role)
+    user_query = await db.execute(select(User).where(*conditions).offset(skip).limit(limit))
+    users = user_query.scalars().all()
+    return [{"id": u.id, "username": u.username, "email": u.email, "full_name": u.full_name,
+             "role": u.role, "is_active": u.is_active, "created_at": str(u.created_at) if u.created_at else None}
+            for u in users]
 
 
-@router.put("/users/{user_id}/status")
-def update_user_status(
-    user_id: int,
-    is_active: bool = Query(..., description="目标状态: True正常, False封禁"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_admin)
-):
-    """
-    管理员接口：修改用户状态
-    """
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="该用户不存在")
-    
-    if user.id == current_user.id and not is_active:
-        raise HTTPException(status_code=400, detail="不能封禁当前登录的管理员账号")
-        
-    user.is_active = is_active
-    db.commit()
-    
-    status_msg = "已解封" if is_active else "已封禁"
-    return {"message": f"用户 {user.username} {status_msg}"}
+# ---- 用户详情 ----
+@router.get("/users/{user_id}")
+async def get_user(user_id: int, current_user: User = Depends(get_current_active_admin), db: AsyncSession = Depends(get_db)):
+    user_query = await db.execute(select(User).where(User.id == user_id))
+    user = user_query.scalar()
+    if not user: raise HTTPException(status_code=404, detail="用户不存在")
+    return {"id": user.id, "username": user.username, "email": user.email, "full_name": user.full_name,
+            "role": user.role, "is_active": user.is_active, "created_at": str(user.created_at) if user.created_at else None}
 
 
-@router.put("/users/{user_id}/reset-password")
-def reset_user_password(
-    user_id: int,
-    new_password: str = Query(..., description="新密码", min_length=6),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_admin)
-):
-    """
-    管理员接口：重置指定用户的密码
-    """
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="该用户不存在")
-        
-    hashed_password = get_password_hash(new_password)
-    user.password = hashed_password
-    
-    db.commit()
-    return {"message": f"用户 {user.username} 的密码已成功重置"}
+# ---- 更新用户 ----
+@router.put("/users/{user_id}")
+async def update_user(user_id: int, password: Optional[str] = Query(None), email: Optional[str] = Query(None),
+                       full_name: Optional[str] = Query(None), is_active: Optional[bool] = Query(None),
+                       role: Optional[int] = Query(None),
+                       current_user: User = Depends(get_current_active_admin), db: AsyncSession = Depends(get_db)):
+    user_query = await db.execute(select(User).where(User.id == user_id))
+    user = user_query.scalar()
+    if not user: raise HTTPException(status_code=404, detail="用户不存在")
+    if password: user.password = get_password_hash(password)
+    if email: user.email = email
+    if full_name: user.full_name = full_name
+    if is_active is not None: user.is_active = is_active
+    if role is not None: user.role = role
+    await db.commit(); await db.refresh(user)
+    return {"id": user.id, "username": user.username, "message": "更新成功"}
 
 
+# ---- 删除用户 ----
 @router.delete("/users/{user_id}")
-def delete_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_admin)
-):
-    """
-    管理员接口：删除指定用户
-    """
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="该用户不存在")
-        
-    if user.id == current_user.id:
-        raise HTTPException(status_code=400, detail="不能删除当前登录的管理员账号")
-        
-    db.delete(user)
-    db.commit()
-    
-    return {"message": f"用户 {user.username} 已被成功删除"}
+async def delete_user(user_id: int, current_user: User = Depends(get_current_active_admin), db: AsyncSession = Depends(get_db)):
+    user_query = await db.execute(select(User).where(User.id == user_id))
+    user = user_query.scalar()
+    if not user: raise HTTPException(status_code=404, detail="用户不存在")
+    await db.delete(user); await db.commit()
+    return {"message": "用户已删除"}

@@ -41,6 +41,14 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/talentflow-worker:latest
 
+      - name: Build & Push MCP Server
+        uses: docker/build-push-action@v6
+        with:
+          context: ./talentflow-ai-backend-bak
+          file: ./talentflow-ai-backend-bak/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/talentflow-mcp:latest
+
       - name: Build & Push Frontend
         uses: docker/build-push-action@v6
         with:
@@ -56,9 +64,10 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
-          timeout: 5m
+          timeout: 30s
+          command_timeout: 15m
           script: |
             cd /home/talentflow-ai
-            docker compose pull backend worker frontend
-            docker compose up -d backend worker frontend --force-recreate
+            docker compose pull backend worker frontend mcp-server
+            docker compose up -d backend worker frontend mcp-server --force-recreate
             docker image prune -f

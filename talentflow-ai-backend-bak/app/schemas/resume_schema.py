@@ -57,5 +57,7 @@ class ResumeDetailOut(ResumeOut):
 
 
 class ResumeReviewSubmit(BaseModel):
-    """审核提交：写入新技能ID列表"""
-    skill_ids: List[int] = Field(..., min_length=1, description="审核确认后的标准技能ID列表")
+    """审核提交"""
+    skill_ids: List[int] = Field(default_factory=list, description="审核确认后的标准技能ID列表")
+    action: str = Field(default="pass", pattern="^(pass|reject)$", description="pass=通过, reject=驳回")
+    review_comment: Optional[str] = Field(default=None, description="审核评语")

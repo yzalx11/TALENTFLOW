@@ -16,4 +16,4 @@ class AgentState(TypedDict, total=False):
 
     applied: list[dict]                # 已投递结果
     cover_letters: dict                # job_id → 求职信
-    error: Optional[str]               # 错误信息
+    error: Optional[str]               

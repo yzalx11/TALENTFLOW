@@ -43,6 +43,37 @@
             </div>
           </div>
         </el-card>
+
+        <!-- 全部岗位 -->
+        <el-card shadow="never" class="all-jobs-card" style="margin-top:20px">
+          <template #header>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span>全部岗位</span>
+              <el-input v-model="jobSearchKeyword" placeholder="搜索岗位名称" clearable style="width:200px" @keyup.enter="fetchAllJobs(1)" @clear="fetchAllJobs(1)">
+                <template #prefix><el-icon><Search /></el-icon></template>
+              </el-input>
+            </div>
+          </template>
+          <div v-loading="allJobsLoading">
+            <div v-for="job in allJobs" :key="job.id" class="job-row">
+              <div class="job-row-left">
+                <div class="job-row-title">{{ job.title }}</div>
+                <div class="job-row-meta">{{ job.company || '未知' }} · {{ job.salary || '面议' }} · {{ job.location || '不限' }}</div>
+                <div class="job-row-skills" v-if="job.required_skills?.length">
+                  <el-tag v-for="sk in job.required_skills.slice(0,4)" :key="sk" size="small" effect="plain">{{ sk }}</el-tag>
+                </div>
+              </div>
+              <div class="job-row-right">
+                <el-button link size="small" @click="showJobDetail(job)">详情</el-button>
+                <el-button link size="small" @click="openApplyDialog({job})" :disabled="job.is_applied">{{ job.is_applied ? '已投递' : '投递' }}</el-button>
+              </div>
+            </div>
+            <el-empty v-if="!allJobsLoading && !allJobs.length" description="暂无岗位" :image-size="60" />
+            <div class="pagination-row" v-if="allJobsTotal > 10">
+              <el-pagination background layout="total, prev, pager, next, jumper" :total="allJobsTotal" :page-size="10" v-model:current-page="allJobsPage" @current-change="(p) => fetchAllJobs(p)" />
+            </div>
+          </div>
+        </el-card>
       </el-col>
 
       <!-- 3. 右侧智能推荐区 -->
@@ -175,6 +206,21 @@ const resumeStore = useResumeStore()
 const pageLoading = ref(false)
 const isRefreshing = ref(false)
 const recommendedJobs = ref([])
+const allJobs = ref([])
+const allJobsLoading = ref(false)
+const allJobsTotal = ref(0)
+const allJobsPage = ref(1)
+const jobSearchKeyword = ref('')
+
+const fetchAllJobs = async (page = 1) => {
+  allJobsLoading.value = true
+  allJobsPage.value = page
+  try {
+    const r = await request.get('/user/jobs', { params: { skip: (page-1)*10, limit: 10, keyword: jobSearchKeyword.value } })
+    const d = r.data || r
+    allJobs.value = d.items || []; allJobsTotal.value = d.total || 0
+  } catch {} finally { allJobsLoading.value = false }
+}
 
 // 顶部统计数据
 const statsData = ref([
@@ -361,6 +407,7 @@ const runAgentAutoApply = async () => {
 // --- 初始化 ---
 onMounted(() => {
   fetchRecommendations()
+  fetchAllJobs()
 })
 
 onBeforeUnmount(() => {
@@ -488,6 +535,8 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   height: 100%;
+  margin-right: -20px;
+  padding-right: 20px;
 }
 .job-item {
   margin-bottom: 10px;
@@ -547,4 +596,12 @@ onBeforeUnmount(() => {
   background-color: #ddd;
   border-radius: 3px;
 }
+.job-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+.job-row:last-child { border-bottom: none; }
+.job-row-title { font-size: 14px; font-weight: 500; color: #303133; margin-bottom: 2px; }
+.job-row-meta { font-size: 12px; color: #909399; margin-bottom: 4px; }
+.job-row-skills { display: flex; gap: 4px; flex-wrap: wrap; }
+.job-row-right { display: flex; gap: 8px; flex-shrink: 0; }
+.pagination-row { display: flex; justify-content: center; margin-top: 10px; }
+
 </style>
