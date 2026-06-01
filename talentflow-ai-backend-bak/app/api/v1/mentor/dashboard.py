@@ -39,6 +39,6 @@ async def get_stats(current_user: User = Depends(get_current_user), db: AsyncSes
     sql = text("""SELECT (SELECT COUNT(*) FROM tasks WHERE mentor_id = :mid) AS total_published,
         (SELECT COUNT(*) FROM tasks WHERE mentor_id = :mid AND status = 1) AS in_progress,
         (SELECT COALESCE(SUM(price), 0) FROM tasks WHERE mentor_id = :mid) AS total_bounty,
-        (SELECT COUNT(*) FROM task_deliveries d JOIN tasks t ON t.id = d.task_id WHERE t.mentor_id = :mid AND d.status = 'pending') AS pending_reviews""")
+        (SELECT COUNT(*) FROM applications a JOIN tasks t ON t.id = a.task_id WHERE t.mentor_id = :mid AND a.status = 'applied') AS pending_reviews""")
     row = await db.execute(sql, {"mid": mentor.id}); r = row.fetchone()
     return {"total_published": r[0] or 0, "in_progress": r[1] or 0, "total_bounty": r[2] or 0, "pending_reviews": r[3] or 0}

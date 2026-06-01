@@ -28,7 +28,7 @@ class TaskBase(BaseModel):
     difficulty: Optional[str] = Field(default=None, description="难度等级")
     skills: Optional[List[str]] = None
     taken_by: Optional[int] = None
-    status: Optional[int] = Field(default=0, description="任务状态: 0-待审核, 1-进行中, 2-已暂停, 3-已完成")
+    status: Optional[int] = Field(default=1, description="任务状态: 0-草稿, 1-进行中, 2-已暂停, 3-已完成")
 
   
 class TaskCreate(TaskBase):

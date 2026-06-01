@@ -1,7 +1,7 @@
 # app/utils/file_parser.py
 """
 文档解析工厂 — 统一入口 parse_resume_file() 按扩展名路由到独立解析器，
-支持 PDF / DOCX / TXT，预留 .doc 旧格式转换与图片 OCR 接口。
+支持 PDF / DOCX / TXT / DOC / 图片 OCR，PDF 扫描件自动回退 OCR。
 """
 import os
 import shutil
@@ -13,6 +13,20 @@ from fastapi import UploadFile
 
 from app.core.config import settings
 from app.core.logger import logger
+
+# OCR 依赖（可选，未安装时降级提示）
+try:
+    import pytesseract
+    from PIL import Image
+    _OCR_AVAILABLE = True
+except ImportError:
+    _OCR_AVAILABLE = False
+
+try:
+    from pdf2image import convert_from_path
+    _PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    _PDF2IMAGE_AVAILABLE = False
 
 # ============================================================
 # 配置常量
@@ -88,29 +102,8 @@ def parse_resume_file(file_location: str, fallback_text: str = "") -> str:
 # ============================================================
 
 def _parse_pdf(file_location: str) -> str:
-    """PDF 解析：逐页提取文本"""
-    full_text_parts = []
-    with pdfplumber.open(file_location) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                full_text_parts.append(text)
-
-            # 同时提取表格数据，保留结构化信息
-            tables = page.extract_tables()
-            for table in tables:
-                if table:
-                    for row in table:
-                        row_text = " | ".join(
-                            [cell if cell is not None else "" for cell in row]
-                        )
-                        if row_text.strip():
-                            full_text_parts.append(row_text)
-
-    result = "\n".join(full_text_parts).strip()
-    if not result:
-        raise ValueError("PDF 未提取到任何文本内容")
-    return result
+    """PDF 解析：先文本层提取，扫描件自动回退 OCR"""
+    return _parse_pdf_with_ocr_fallback(file_location)
 
 
 def _parse_docx(file_location: str) -> str:
@@ -202,22 +195,73 @@ def _parse_doc(file_location: str) -> str:
     )
 
 
+def _ocr_image(file_path: str) -> str:
+    """单张图片 OCR，返回提取文本"""
+    if not _OCR_AVAILABLE:
+        raise NotImplementedError(
+            "OCR 未启用：需安装 pytesseract + Pillow + 系统 tesseract-ocr"
+        )
+    img = Image.open(file_path)
+    # 中文 + 英文混合识别
+    text = pytesseract.image_to_string(img, lang="chi_sim+eng")
+    return text.strip()
+
+
 def _parse_image(file_location: str) -> str:
-    """
-    图片简历 OCR 解析 — 当前为预留接口。
+    """图片简历 OCR 解析 — pytesseract 实现"""
+    text = _ocr_image(file_location)
+    if not text:
+        raise ValueError("OCR 未提取到任何文本内容（图片可能为空白或清晰度过低）")
+    return text
 
-    生产环境可对接:
-      - pytesseract (开源)
-      - 百度 OCR / 腾讯 OCR API (云端)
-      - 自研识别模型
 
-    当前直接抛出 NotImplementedError，由工厂入口 catch 后回退到 fallback_text，
-    不会阻塞批量处理管道。
+def _parse_pdf_with_ocr_fallback(file_location: str) -> str:
     """
-    raise NotImplementedError(
-        f"图片简历 OCR 功能尚未实现 ({os.path.basename(file_location)})。"
-        f"可集成 pytesseract 或云端 OCR API 后启用此解析器。"
-    )
+    PDF 解析增强版：先走 pdfplumber 提取文本层；
+    若未提取到文字（扫描件），则逐页转图片后 OCR。
+    """
+    # 第一轮：普通 PDF 文本提取
+    with pdfplumber.open(file_location) as pdf:
+        full_text_parts = []
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                full_text_parts.append(text)
+            tables = page.extract_tables()
+            for table in tables:
+                if table:
+                    for row in table:
+                        row_text = " | ".join(
+                            [cell if cell is not None else "" for cell in row]
+                        )
+                        if row_text.strip():
+                            full_text_parts.append(row_text)
+
+    result = "\n".join(full_text_parts).strip()
+    if result:
+        return result  # 普通 PDF，直接返回
+
+    # 第二轮：OCR 兜底 (扫描件 PDF)
+    if not _PDF2IMAGE_AVAILABLE or not _OCR_AVAILABLE:
+        raise NotImplementedError(
+            "PDF 扫描件需要安装 pdf2image + poppler-utils + tesseract-ocr 才能 OCR 识别。\n"
+            "  - Ubuntu/Debian: sudo apt install poppler-utils tesseract-ocr tesseract-ocr-chi-sim\n"
+            "  - macOS: brew install poppler tesseract tesseract-lang"
+        )
+
+    logger.info(f"📷 PDF 文本层为空，启用 OCR 扫描件模式: {os.path.basename(file_location)}")
+    ocr_parts = []
+    images = convert_from_path(file_location, dpi=300)
+    for i, img in enumerate(images):
+        page_text = pytesseract.image_to_string(img, lang="chi_sim+eng")
+        if page_text.strip():
+            ocr_parts.append(page_text.strip())
+        logger.info(f"  OCR 第 {i+1}/{len(images)} 页 → {len(page_text.strip())} 字符")
+
+    result = "\n".join(ocr_parts).strip()
+    if not result:
+        raise ValueError("PDF 扫描件 OCR 未提取到任何文本内容")
+    return result
 
 
 # ============================================================

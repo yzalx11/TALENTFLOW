@@ -3,13 +3,13 @@
 Agent 节点函数 — 每个节点是单一职责的原子执行单元
 
 节点 = 执行单元（工人）
-  输入: AgentState（全局黑板，读需要的字段）
-  输出: dict（局部更新，写回黑板）
+  输入: AgentState,全局黑板,读需要的字段
+  输出: dict,局部更新，写回黑板
 
 7 个节点按顺序：
   [1] fetch_resume           从数据库读取用户默认简历
-  [2] get_recommendations    调推荐引擎（优先 MCP，fallback 直调）
-  [3] optimize_resume        调 LLM（DeepSeek）优化简历亮点
+  [2] get_recommendations    调推荐引擎（优先 MCP,fallback 直调）
+  [3] optimize_resume        调 LLM.DeepSeek,优化简历亮点
   [4] save_optimized_resume  优化结果持久化到 resumes 表
   [5] generate_letter        调 LLM 生成个性化求职信
   [6] apply_jobs             逐岗位创建 Application 投递记录
@@ -178,7 +178,7 @@ async def generate_letter_node(state: AgentState) -> dict:
 
         job_list = "\n".join(
             f"- {j['title']}: {j.get('description', '')[:150]}"
-            for j in matched[:3]  # 限制前 3 个，控制 Token 消耗
+            for j in matched  # 为所有匹配岗位生成求职信
         )
         from app.agent.skills import load_skill
 
@@ -236,7 +236,12 @@ async def apply_jobs_node(state: AgentState) -> dict:
                 continue
 
             resume_id = state.get("resume", {}).get("id")
+            # 模糊匹配求职信 key（LLM 可能返回略有不同的标题）
             letter = cover_letters.get(job["title"], "")
+            if not letter:
+                for key, val in cover_letters.items():
+                    if job["title"][:4] in key or key[:4] in job["title"]:
+                        letter = val; break
             app = Application(
                 user_id=state["user_id"], job_id=job["job_id"],
                 resume_id=resume_id, cover_letter=letter, status="applied",

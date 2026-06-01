@@ -90,7 +90,7 @@ services:
   mcp-server:
     build:
       context: ./talentflow-ai-backend-bak
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.mcp
     image: ghcr.io/yzalx11/talentflow-mcp:latest
     container_name: talentflow-mcp
     ports:

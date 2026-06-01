@@ -3,9 +3,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安装系统依赖（pdfplumber 需要）
+# 安装系统依赖（pdfplumber + OCR + PDF 扫描件转图片）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev zlib1g-dev \
+    tesseract-ocr tesseract-ocr-chi-sim \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

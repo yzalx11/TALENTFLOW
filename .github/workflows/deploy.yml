@@ -45,7 +45,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./talentflow-ai-backend-bak
-          file: ./talentflow-ai-backend-bak/Dockerfile
+          file: ./talentflow-ai-backend-bak/Dockerfile.mcp
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/talentflow-mcp:latest
 

@@ -2,34 +2,6 @@
 """
 LangGraph Agent 图编译 — 声明式定义智能投递的完整流程
 
-图结构（7 节点 + 2 条件边 + 4 固定边）：
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  START
-    ↓
-  [1] fetch_resume ──────→ 无简历/报错 ──→ [7] save_record
-    │ 从数据库查默认简历                    ↑
-    │      ↓ 有简历                         │
-    │ [2] get_recommendations               │
-    │ MCP 协议/直调推荐引擎                  │
-    │      ↓ 有匹配岗位                      │
-    │ [3] optimize_resume                   │
-    │ LLM 优化简历亮点（DeepSeek）            │
-    │      ↓                                │
-    │ [4] save_optimized_resume             │
-    │ 优化结果写回数据库，下次可复用           │
-    │      ↓                                │
-    │ [5] generate_letter                   │
-    │ LLM 生成个性化求职信 ×3                 │
-    │      ↓                                │
-    │ [6] apply_jobs                        │
-    │ 逐岗位创建 Application 投递记录         │
-    │      ↓                                │
-    └─────→ [7] save_record → END           │
-            记录日志，持久化结果              │
-              ↑ 已有/无匹配 ←─────────────────┘
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 边类型：
   - 条件边 (add_conditional_edges): 根据 state 动态决定下一步
   - 固定边 (add_edge): 永远按固定顺序执行
@@ -119,7 +91,6 @@ def build_graph():
 
     #编译图
     return builder.compile(checkpointer=checkpointer)
-
 
 # 全局单例供 SmartApplyAgent 调用
 agent_graph = build_graph()
