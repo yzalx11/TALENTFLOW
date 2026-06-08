@@ -80,8 +80,8 @@ jobs:
           command_timeout: 15m
           script: |
             TAG=${{ steps.vars.outputs.short_sha }}
-            # 首次部署时取消下面这行注释：kubectl apply -f /home/talentflow-ai/k8s/
-            # 日常更新只改镜像版本（精准追踪+回滚）
+            # apply + set image（幂等，新服务器也能自动初始化）
+            kubectl apply -f /home/talentflow-ai/k8s/
             kubectl set image deployment/backend    backend=ghcr.io/${{ github.repository_owner }}/talentflow-backend:${TAG}    -n talentflow
             kubectl set image deployment/worker     worker=ghcr.io/${{ github.repository_owner }}/talentflow-worker:${TAG}      -n talentflow
             kubectl set image deployment/mcp-server mcp-server=ghcr.io/${{ github.repository_owner }}/talentflow-mcp:${TAG}    -n talentflow
