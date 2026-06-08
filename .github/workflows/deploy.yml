@@ -57,7 +57,7 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/talentflow-frontend:latest
 
-      - name: Deploy to Server
+      - name: Deploy to Server (K8s)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -68,6 +68,8 @@ jobs:
           command_timeout: 15m
           script: |
             cd /home/talentflow-ai
-            docker compose pull backend worker frontend mcp-server
-            docker compose up -d backend worker frontend mcp-server --force-recreate
-            docker image prune -f
+            git pull origin master
+            kubectl apply -f k8s/
+            kubectl rollout status deployment/backend -n talentflow --timeout=120s
+            kubectl rollout status deployment/frontend -n talentflow --timeout=60s
+            kubectl get pods -n talentflow -o wide

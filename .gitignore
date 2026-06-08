@@ -45,3 +45,9 @@ job.csv
 data/uploads/
 __pycache__/
 *.pyc
+.mcp.json
+.claude/launch.json
+TalentFlow-AI-核心业务流程.md
+TalentFlow-AI-架构图.drawio
+TalentFlow-AI-用例图关系.md
+TalentFlow-AI-LangGraph-Agent活动图.puml

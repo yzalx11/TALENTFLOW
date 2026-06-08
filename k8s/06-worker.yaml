@@ -1,0 +1,63 @@
+# Celery Worker — 无端口，单副本
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: talentflow
+  labels:
+    app: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/yzalx11/talentflow-worker:latest
+          imagePullPolicy: Always
+          env:
+            - name: MYSQL_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: talentflow-config
+                  key: mysql-server
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: talentflow-config
+                  key: mysql-user
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: talentflow-config
+                  key: mysql-database
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: talentflow-secrets
+                  key: mysql-root-password
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: talentflow-config
+                  key: redis-url
+            - name: BACKEND_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: talentflow-config
+                  key: backend-host
+          volumeMounts:
+            - name: models
+              mountPath: /app/data/models
+              readOnly: true
+      volumes:
+        - name: models
+          hostPath:
+            path: /opt/models
+            type: DirectoryOrCreate
