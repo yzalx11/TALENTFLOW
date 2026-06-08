@@ -9,7 +9,6 @@ RUN pip install --no-cache-dir fastmcp pymysql celery redis
 
 COPY app/ ./app/
 COPY mcp_server/ ./mcp_server/
-COPY .env ./
 
 RUN mkdir -p /app/data/models
 
