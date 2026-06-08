@@ -80,12 +80,9 @@ jobs:
           command_timeout: 15m
           script: |
             TAG=${{ steps.vars.outputs.short_sha }}
-            # apply + set image（幂等，新服务器也能自动初始化）
             kubectl apply -f /home/talentflow-ai/k8s/
-            kubectl set image deployment/backend    backend=ghcr.io/${{ github.repository_owner }}/talentflow-backend:${TAG}    -n talentflow
-            kubectl set image deployment/worker     worker=ghcr.io/${{ github.repository_owner }}/talentflow-worker:${TAG}      -n talentflow
-            kubectl set image deployment/mcp-server mcp-server=ghcr.io/${{ github.repository_owner }}/talentflow-mcp:${TAG}    -n talentflow
-            kubectl set image deployment/frontend   frontend=ghcr.io/${{ github.repository_owner }}/talentflow-frontend:${TAG}  -n talentflow
+            # 强制重启所有 Pod 拉取最新镜像（tags 已含 SHA，ghcr.io 可追溯）
+            kubectl rollout restart deployment/backend deployment/worker deployment/mcp-server deployment/frontend -n talentflow
             kubectl rollout status deployment/backend  -n talentflow --timeout=600s
             kubectl rollout status deployment/frontend -n talentflow --timeout=600s
             kubectl rollout status deployment/worker   -n talentflow --timeout=600s
