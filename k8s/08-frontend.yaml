@@ -1,4 +1,4 @@
-# Frontend — Nginx + Vue，2 副本 + NodePort 对外暴露
+# Frontend — Nginx + Vue，hostPort 直接绑宿主机端口，与 Compose 对齐
 ---
 apiVersion: v1
 kind: Service
@@ -8,13 +8,11 @@ metadata:
   labels:
     app: frontend
 spec:
-  type: NodePort
   selector:
     app: frontend
   ports:
     - port: 80
       targetPort: 80
-      nodePort: 30080
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,7 +22,7 @@ metadata:
   labels:
     app: frontend
 spec:
-  replicas: 2
+  replicas: 1     # hostPort 只能一个 Pod 绑一个端口
   selector:
     matchLabels:
       app: frontend
@@ -39,6 +37,7 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 80
+              hostPort: 8893     # 直接绑宿主机 8893，跟云转发对齐
           readinessProbe:
             httpGet:
               path: /
