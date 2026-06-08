@@ -15,6 +15,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Short SHA
+        id: vars
+        run: echo "short_sha=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -31,7 +35,9 @@ jobs:
           context: ./talentflow-ai-backend-bak
           file: ./talentflow-ai-backend-bak/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/talentflow-backend:latest
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/talentflow-backend:latest
+            ghcr.io/${{ github.repository_owner }}/talentflow-backend:${{ steps.vars.outputs.short_sha }}
 
       - name: Build & Push Worker
         uses: docker/build-push-action@v6
@@ -39,7 +45,9 @@ jobs:
           context: ./talentflow-ai-backend-bak
           file: ./talentflow-ai-backend-bak/Dockerfile.worker
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/talentflow-worker:latest
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/talentflow-worker:latest
+            ghcr.io/${{ github.repository_owner }}/talentflow-worker:${{ steps.vars.outputs.short_sha }}
 
       - name: Build & Push MCP Server
         uses: docker/build-push-action@v6
@@ -47,7 +55,9 @@ jobs:
           context: ./talentflow-ai-backend-bak
           file: ./talentflow-ai-backend-bak/Dockerfile.mcp
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/talentflow-mcp:latest
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/talentflow-mcp:latest
+            ghcr.io/${{ github.repository_owner }}/talentflow-mcp:${{ steps.vars.outputs.short_sha }}
 
       - name: Build & Push Frontend
         uses: docker/build-push-action@v6
@@ -55,9 +65,22 @@ jobs:
           context: ./talentflow-ai-frontend
           file: ./talentflow-ai-frontend/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/talentflow-frontend:latest
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/talentflow-frontend:latest
+            ghcr.io/${{ github.repository_owner }}/talentflow-frontend:${{ steps.vars.outputs.short_sha }}
 
-      - name: Deploy to Server (K8s)
+      - name: Sync k8s YAML to Server
+        uses: appleboy/scp-action@v0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: "k8s/*.yaml"
+          target: "/home/talentflow-ai/k8s/"
+          strip_components: 0
+
+      - name: Deploy (K8s)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -67,9 +90,16 @@ jobs:
           timeout: 30s
           command_timeout: 15m
           script: |
-            cd /home/talentflow-ai
-            git pull origin master
-            kubectl apply -f k8s/
-            kubectl rollout status deployment/backend -n talentflow --timeout=120s
-            kubectl rollout status deployment/frontend -n talentflow --timeout=60s
+            TAG=${{ steps.vars.outputs.short_sha }}
+            # 应用 YAML（首次创建资源，后续更新配置，幂等）
+            kubectl apply -f /home/talentflow-ai/k8s/
+            # 钉死镜像版本到 git commit SHA（精准追踪+回滚）
+            kubectl set image deployment/backend    backend=ghcr.io/${{ github.repository_owner }}/talentflow-backend:${TAG}    -n talentflow
+            kubectl set image deployment/worker     worker=ghcr.io/${{ github.repository_owner }}/talentflow-worker:${TAG}      -n talentflow
+            kubectl set image deployment/mcp-server mcp-server=ghcr.io/${{ github.repository_owner }}/talentflow-mcp:${TAG}    -n talentflow
+            kubectl set image deployment/frontend   frontend=ghcr.io/${{ github.repository_owner }}/talentflow-frontend:${TAG}  -n talentflow
+            kubectl rollout status deployment/backend  -n talentflow --timeout=600s
+            kubectl rollout status deployment/frontend -n talentflow --timeout=600s
+            kubectl rollout status deployment/worker   -n talentflow --timeout=600s
+            kubectl rollout status deployment/mcp-server -n talentflow --timeout=600s
             kubectl get pods -n talentflow -o wide
