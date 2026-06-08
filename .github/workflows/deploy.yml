@@ -80,9 +80,10 @@ jobs:
           command_timeout: 15m
           script: |
             TAG=${{ steps.vars.outputs.short_sha }}
-            kubectl apply -f /home/talentflow-ai/k8s/
-            # 强制重启所有 Pod 拉取最新镜像（tags 已含 SHA，ghcr.io 可追溯）
-            kubectl rollout restart deployment/backend deployment/worker deployment/mcp-server deployment/frontend -n talentflow
+            cd /home/talentflow-ai/k8s/
+            # 替换镜像标签为 :SHA（无论当前是 :latest 还是旧 SHA，一步到位）
+            sed -i "s/:[^:]*$/:${TAG}/" 05-backend.yaml 06-worker.yaml 07-mcp.yaml 08-frontend.yaml
+            kubectl apply -f .
             kubectl rollout status deployment/backend  -n talentflow --timeout=600s
             kubectl rollout status deployment/frontend -n talentflow --timeout=600s
             kubectl rollout status deployment/worker   -n talentflow --timeout=600s

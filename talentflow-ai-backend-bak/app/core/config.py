@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     OPENAI_API_BASE: str = ""
 
     # 模型路径
-    EMBEDDING_MODEL_PATH: str = ""
-    RERANKER_MODEL_PATH: str = ""
+    EMBEDDING_MODEL_PATH: str = "/app/data/models/text2vec-base-chinese"
+    RERANKER_MODEL_PATH: str = "/app/data/models/bge-reranker-v2-m3"
     MODELS_BASE_DIR: str = "/app/data/models"
 
     PROJECT_ROOT: str = r"D:\py_lesson\talentflow-ai>\talentflow-ai-backend-bak"

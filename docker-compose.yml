@@ -22,6 +22,7 @@ services:
       - ./talentflow-ai-backend-bak/.env:/app/.env:ro
       # 模型文件不打包进镜像，从宿主机挂载
       - ${MODEL_DIR:-/opt/models}:/app/data/models:ro
+      - ./talentflow-ai-backend-bak/mcp_server:/app/mcp_server:ro
       - ./talentflow-ai-backend-bak/data/faiss_db:/app/data/faiss_db
       - ./talentflow-ai-backend-bak/data/uploads:/app/data/uploads
     depends_on:
@@ -45,6 +46,7 @@ services:
     volumes:
       - ./talentflow-ai-backend-bak/.env:/app/.env:ro
       - ${MODEL_DIR:-/opt/models}:/app/data/models:ro
+      - ./talentflow-ai-backend-bak/mcp_server:/app/mcp_server:ro
       - ./talentflow-ai-backend-bak/data/faiss_db:/app/data/faiss_db
       - ./talentflow-ai-backend-bak/data/uploads:/app/data/uploads
     depends_on:
@@ -60,7 +62,7 @@ services:
     image: ghcr.io/yzalx11/talentflow-frontend:latest
     container_name: talentflow-frontend
     ports:
-      - "80:80"
+      - "8893:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -73,7 +75,7 @@ services:
       - "6379:6379"
     restart: unless-stopped
 
-  # ============ MySQL（可选，也可用外部） ============
+  # ============ MySQL ============
   mysql:
     image: mysql:8.0
     container_name: talentflow-mysql
@@ -90,7 +92,7 @@ services:
   mcp-server:
     build:
       context: ./talentflow-ai-backend-bak
-      dockerfile: Dockerfile.mcp
+      dockerfile: Dockerfile
     image: ghcr.io/yzalx11/talentflow-mcp:latest
     container_name: talentflow-mcp
     ports:
@@ -99,6 +101,7 @@ services:
     volumes:
       - ./talentflow-ai-backend-bak/.env:/app/.env:ro
       - ${MODEL_DIR:-/opt/models}:/app/data/models:ro
+      - ./talentflow-ai-backend-bak/mcp_server:/app/mcp_server:ro
     depends_on:
       - redis
       - mysql

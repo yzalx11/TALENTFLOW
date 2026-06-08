@@ -68,11 +68,26 @@ spec:
                 secretKeyRef:
                   name: talentflow-secrets
                   key: openai-api-key
+            - name: OPENAI_API_BASE
+              valueFrom:
+                configMapKeyRef:
+                  name: talentflow-config
+                  key: openai-api-base
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: talentflow-secrets
                   key: jwt-secret-key
+            - name: EMBEDDING_MODEL_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: talentflow-config
+                  key: embedding-model-path
+            - name: RERANKER_MODEL_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: talentflow-config
+                  key: reranker-model-path
           volumeMounts:
             - name: models
               mountPath: /app/data/models

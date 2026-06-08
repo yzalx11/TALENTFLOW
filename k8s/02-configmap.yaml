@@ -9,3 +9,6 @@ data:
   mysql-database: "talentflow_db"
   redis-url: "redis://redis:6379"
   backend-host: "backend"
+  openai-api-base: "https://api.deepseek.com/v1"
+  embedding-model-path: "/app/data/models/text2vec-base-chinese"
+  reranker-model-path: "/app/data/models/bge-reranker-v2-m3"

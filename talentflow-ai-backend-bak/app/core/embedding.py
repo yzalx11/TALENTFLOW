@@ -12,15 +12,14 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 _embedding_instance = None
 
-DEFAULT_EMBEDDING_PATH = r"D:\py_lesson\RAG-Customer-Service\smart-cs-backend\app\rag\model\text2vec-base-chinese"
-
-
 def get_embedding_function():
     global _embedding_instance
     if _embedding_instance is not None:
         return _embedding_instance
 
-    model_path = settings.EMBEDDING_MODEL_PATH or DEFAULT_EMBEDDING_PATH
+    model_path = settings.EMBEDDING_MODEL_PATH
+    if not model_path or not os.path.isdir(model_path):
+        raise FileNotFoundError(f"Embedding 模型路径不存在: {model_path}")
     logger.info(f"⏳ [初始化] 正在加载本地 Embedding 模型: {model_path}")
     
     # 初始化配置
