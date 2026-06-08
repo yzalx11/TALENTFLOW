@@ -86,6 +86,8 @@ jobs:
           echo "$KUBECONFIG_DATA" > ./kubeconfig
 
       - name: Deploy to K8s
+        env:
+          GODEBUG: http2client=0
         run: |
           TAG=${{ needs.build-and-push.outputs.short_sha }}
           cd k8s/
