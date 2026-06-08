@@ -73,28 +73,22 @@ jobs:
     needs: build-and-push
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: Create kubeconfig
-        env:
-          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
-        run: |
-          echo "$KUBECONFIG_DATA" > ./kubeconfig
-
-      - name: Deploy to K8s
-        env:
-          GODEBUG: http2client=0
-        run: |
-          TAG=${{ needs.build-and-push.outputs.short_sha }}
-          cd k8s/
-          sed -i "/image:/s/:[^:]*$/:${TAG}/" 05-backend.yaml 06-worker.yaml 07-mcp.yaml 08-frontend.yaml
-          kubectl --kubeconfig=../kubeconfig apply -f .
-          kubectl --kubeconfig=../kubeconfig rollout status deployment/backend -n talentflow --timeout=600s
-          kubectl --kubeconfig=../kubeconfig rollout status deployment/frontend -n talentflow --timeout=600s
-          kubectl --kubeconfig=../kubeconfig rollout status deployment/worker -n talentflow --timeout=600s
-          kubectl --kubeconfig=../kubeconfig rollout status deployment/mcp-server -n talentflow --timeout=600s
-          kubectl --kubeconfig=../kubeconfig get pods -n talentflow -o wide
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          timeout: 30s
+          command_timeout: 15m
+          script: |
+            TAG=${{ needs.build-and-push.outputs.short_sha }}
+            cd /home/talentflow-ai/k8s/
+            sed -i "/image:/s/:[^:]*$/:${TAG}/" 05-backend.yaml 06-worker.yaml 07-mcp.yaml 08-frontend.yaml
+            k3s kubectl apply -f .
+            k3s kubectl rollout status deployment/backend -n talentflow --timeout=600s
+            k3s kubectl rollout status deployment/frontend -n talentflow --timeout=600s
+            k3s kubectl rollout status deployment/worker -n talentflow --timeout=600s
+            k3s kubectl rollout status deployment/mcp-server -n talentflow --timeout=600s
+            k3s kubectl get pods -n talentflow -o wide
