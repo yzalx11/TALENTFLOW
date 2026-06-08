@@ -31,9 +31,11 @@ spec:
       labels:
         app: frontend
     spec:
+      imagePullSecrets:
+        - name: acr-secret
       containers:
         - name: frontend
-          image: ghcr.io/yzalx11/talentflow-frontend:latest
+          image: crpi-uv9n8o05oa9eehhh.cn-guangzhou.personal.cr.aliyuncs.com/talentflowai/frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80

@@ -31,9 +31,11 @@ spec:
       labels:
         app: backend
     spec:
+      imagePullSecrets:
+        - name: acr-secret
       containers:
         - name: backend
-          image: ghcr.io/yzalx11/talentflow-backend:latest
+          image: crpi-uv9n8o05oa9eehhh.cn-guangzhou.personal.cr.aliyuncs.com/talentflowai/backend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

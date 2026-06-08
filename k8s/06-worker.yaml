@@ -17,9 +17,11 @@ spec:
       labels:
         app: worker
     spec:
+      imagePullSecrets:
+        - name: acr-secret
       containers:
         - name: worker
-          image: ghcr.io/yzalx11/talentflow-worker:latest
+          image: crpi-uv9n8o05oa9eehhh.cn-guangzhou.personal.cr.aliyuncs.com/talentflowai/worker:latest
           imagePullPolicy: Always
           env:
             - name: MYSQL_SERVER
