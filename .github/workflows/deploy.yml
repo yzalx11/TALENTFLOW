@@ -69,17 +69,6 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/talentflow-frontend:latest
             ghcr.io/${{ github.repository_owner }}/talentflow-frontend:${{ steps.vars.outputs.short_sha }}
 
-      - name: Sync k8s YAML to Server
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          source: "k8s/*.yaml"
-          target: "/home/talentflow-ai/k8s/"
-          strip_components: 0
-
       - name: Deploy (K8s)
         uses: appleboy/ssh-action@v1
         with:
@@ -91,9 +80,8 @@ jobs:
           command_timeout: 15m
           script: |
             TAG=${{ steps.vars.outputs.short_sha }}
-            # 应用 YAML（首次创建资源，后续更新配置，幂等）
-            kubectl apply -f /home/talentflow-ai/k8s/
-            # 钉死镜像版本到 git commit SHA（精准追踪+回滚）
+            # 首次部署时取消下面这行注释：kubectl apply -f /home/talentflow-ai/k8s/
+            # 日常更新只改镜像版本（精准追踪+回滚）
             kubectl set image deployment/backend    backend=ghcr.io/${{ github.repository_owner }}/talentflow-backend:${TAG}    -n talentflow
             kubectl set image deployment/worker     worker=ghcr.io/${{ github.repository_owner }}/talentflow-worker:${TAG}      -n talentflow
             kubectl set image deployment/mcp-server mcp-server=ghcr.io/${{ github.repository_owner }}/talentflow-mcp:${TAG}    -n talentflow
