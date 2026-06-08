@@ -25,7 +25,7 @@ jobs:
       - name: Login to Alibaba Cloud ACR
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.ACR_REGISTRY }}
+          registry: crpi-uv9n8o05oa9eehhh.cn-guangzhou.personal.cr.aliyuncs.com
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
@@ -36,8 +36,8 @@ jobs:
           file: ./talentflow-ai-backend-bak/Dockerfile
           push: true
           tags: |
-            ${{ secrets.ACR_REGISTRY }}/talentflowai/backend:latest
-            ${{ secrets.ACR_REGISTRY }}/talentflowai/backend:${{ steps.vars.outputs.short_sha }}
+            ${{ secrets.ACR_REGISTRY }}/backend:latest
+            ${{ secrets.ACR_REGISTRY }}/backend:${{ steps.vars.outputs.short_sha }}
 
       - name: Build and Push Worker
         uses: docker/build-push-action@v6
@@ -46,8 +46,8 @@ jobs:
           file: ./talentflow-ai-backend-bak/Dockerfile.worker
           push: true
           tags: |
-            ${{ secrets.ACR_REGISTRY }}/talentflowai/worker:latest
-            ${{ secrets.ACR_REGISTRY }}/talentflowai/worker:${{ steps.vars.outputs.short_sha }}
+            ${{ secrets.ACR_REGISTRY }}/worker:latest
+            ${{ secrets.ACR_REGISTRY }}/worker:${{ steps.vars.outputs.short_sha }}
 
       - name: Build and Push MCP Server
         uses: docker/build-push-action@v6
@@ -56,8 +56,8 @@ jobs:
           file: ./talentflow-ai-backend-bak/Dockerfile.mcp
           push: true
           tags: |
-            ${{ secrets.ACR_REGISTRY }}/talentflowai/mcp:latest
-            ${{ secrets.ACR_REGISTRY }}/talentflowai/mcp:${{ steps.vars.outputs.short_sha }}
+            ${{ secrets.ACR_REGISTRY }}/mcp:latest
+            ${{ secrets.ACR_REGISTRY }}/mcp:${{ steps.vars.outputs.short_sha }}
 
       - name: Build and Push Frontend
         uses: docker/build-push-action@v6
@@ -66,8 +66,8 @@ jobs:
           file: ./talentflow-ai-frontend/Dockerfile
           push: true
           tags: |
-            ${{ secrets.ACR_REGISTRY }}/talentflowai/frontend:latest
-            ${{ secrets.ACR_REGISTRY }}/talentflowai/frontend:${{ steps.vars.outputs.short_sha }}
+            ${{ secrets.ACR_REGISTRY }}/frontend:latest
+            ${{ secrets.ACR_REGISTRY }}/frontend:${{ steps.vars.outputs.short_sha }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
