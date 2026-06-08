@@ -81,8 +81,8 @@ jobs:
           script: |
             TAG=${{ steps.vars.outputs.short_sha }}
             cd /home/talentflow-ai/k8s/
-            # 替换镜像标签为 :SHA（无论当前是 :latest 还是旧 SHA，一步到位）
-            sed -i "s/:[^:]*$/:${TAG}/" 05-backend.yaml 06-worker.yaml 07-mcp.yaml 08-frontend.yaml
+            # 只替换 image: 行末尾的标签，避免破坏端口号等字段
+            sed -i "/image:/s/:[^:]*$/:${TAG}/" 05-backend.yaml 06-worker.yaml 07-mcp.yaml 08-frontend.yaml
             kubectl apply -f .
             kubectl rollout status deployment/backend  -n talentflow --timeout=600s
             kubectl rollout status deployment/frontend -n talentflow --timeout=600s
